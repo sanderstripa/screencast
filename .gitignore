@@ -1,0 +1,7 @@
+/build/
+/dist/
+/models/
+*.mp4
+*.partial.mp4
+*.log
+.vs/

@@ -1,0 +1,54 @@
+name: Windows build and MP4 verification
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  windows:
+    runs-on: windows-2022
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure
+        run: cmake -S . -B build -A x64 -DBUILD_TESTING=ON
+      - name: Build
+        run: cmake --build build --config Release --parallel
+      - name: Test audio timeline and suppression
+        run: ctest --test-dir build -C Release --output-on-failure
+      - name: Exercise H.264 and AAC encoders
+        shell: pwsh
+        run: |
+          $outputDir = Join-Path $PWD 'build/smoke'
+          $process = Start-Process build/Release/Screencast.exe -ArgumentList '--self-test', $outputDir -WindowStyle Hidden -PassThru
+          if (-not $process.WaitForExit(120000)) { $process.Kill(); throw 'Encoder self-test timed out' }
+          if ($process.ExitCode -ne 0) { throw "Encoder self-test failed: $($process.ExitCode)" }
+      - name: Decode and validate the generated recordings
+        run: |
+          python -m pip install av==16.0.1 numpy==2.2.6
+          python tests/verify_mp4.py build/smoke
+      - name: Capture both UI themes
+        shell: pwsh
+        run: |
+          foreach ($theme in @('light', 'dark')) {
+            $imagePath = Join-Path $PWD "build/smoke/theme-$theme.png"
+            $process = Start-Process build/Release/Screencast.exe -ArgumentList "--snapshot-$theme", $imagePath -WindowStyle Hidden -PassThru
+            if (-not $process.WaitForExit(30000)) { $process.Kill(); throw "UI $theme timed out" }
+            if ($process.ExitCode -ne 0 -or -not (Test-Path $imagePath)) { throw "UI $theme failed" }
+          }
+      - name: Package portable app
+        run: |
+          cmake --install build --config Release --prefix dist/Screencast
+          Copy-Item scripts dist/Screencast/scripts -Recurse
+          Compress-Archive dist/Screencast/* dist/Screencast-Windows-x64.zip
+          Get-Item dist/Screencast-Windows-x64.zip | Select-Object Name, Length
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Screencast-Windows-x64
+          path: dist/Screencast-Windows-x64.zip
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: verification-files
+          path: build/smoke
