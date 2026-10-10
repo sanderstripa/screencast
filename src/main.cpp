@@ -22,9 +22,9 @@ struct Palette { COLORREF background, text, muted, line, hover, active, buttonTe
 class App {
 public:
     HWND window{};
-    int dpi{96}, theme{};
+    int dpi{96}, theme{}, scroll{};
     bool dark{}, closing{}, finishing{};
-    HFONT font{}, small{}, heading{}, title{};
+    HFONT font{}, smallFont{}, heading{}, title{};
     HBRUSH brush{};
     std::map<int, Control> controls;
     std::vector<Target> screens, windowList;
@@ -35,6 +35,20 @@ public:
     Palette palette{};
 
     int px(int value) const { return MulDiv(value, dpi, 96); }
+    void scrollTo(int position) {
+        RECT r{}; GetClientRect(window, &r);
+        position = std::clamp(position, 0, std::max(0, px(848) - r.bottom));
+        int delta = scroll - position; scroll = position;
+        SetScrollPos(window, SB_VERT, scroll, TRUE);
+        ScrollWindowEx(window, 0, delta, nullptr, nullptr, nullptr, nullptr, SW_SCROLLCHILDREN | SW_INVALIDATE | SW_ERASE);
+        UpdateWindow(window);
+    }
+    void scrollRange() {
+        RECT r{}; GetClientRect(window, &r);
+        SCROLLINFO info{sizeof(info), SIF_RANGE | SIF_PAGE | SIF_POS};
+        info.nMax = px(848) - 1; info.nPage = r.bottom; info.nPos = scroll;
+        SetScrollInfo(window, SB_VERT, &info, TRUE);
+    }
     void applyTheme() {
         DWORD light = 1, size = sizeof(light);
         RegGetValueW(HKEY_CURRENT_USER, L"Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize",
@@ -48,12 +62,12 @@ public:
         InvalidateRect(window, nullptr, TRUE);
     }
     void fonts() {
-        for (auto value : {font, small, heading, title}) if (value) DeleteObject(value);
+        for (auto value : {font, smallFont, heading, title}) if (value) DeleteObject(value);
         auto make = [&](int size, int weight) {
             return CreateFontW(-px(size), 0, 0, 0, weight, FALSE, FALSE, FALSE, DEFAULT_CHARSET,
                 OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY, DEFAULT_PITCH, L"Montserrat");
         };
-        font = make(13, FW_NORMAL); small = make(11, FW_NORMAL);
+        font = make(13, FW_NORMAL); smallFont = make(11, FW_NORMAL);
         heading = make(12, FW_MEDIUM); title = make(23, FW_MEDIUM);
     }
     void add(int id, Kind kind, std::wstring label, int x, int y, int w, int h) {
@@ -149,34 +163,37 @@ public:
         add(Save, Kind::Button, L"Куда сохранить MP4…", 30, 784, 235, 38);
         add(Start, Kind::Button, L"Начать запись", 275, 784, 235, 38);
         RECT client{0,0,px(540),px(848)};
-        AdjustWindowRectExForDpi(&client, WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX, FALSE, 0, dpi);
+        MONITORINFO info{sizeof(info)}; GetMonitorInfoW(MonitorFromWindow(window, MONITOR_DEFAULTTONEAREST), &info);
+        client.bottom = std::min(client.bottom, info.rcWork.bottom - info.rcWork.top - px(60));
+        AdjustWindowRectExForDpi(&client, WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX | WS_VSCROLL, FALSE, 0, dpi);
         SetWindowPos(window, nullptr, 0, 0, client.right-client.left, client.bottom-client.top, SWP_NOMOVE | SWP_NOZORDER);
+        scrollRange();
         refresh(); applyTheme(); SetTimer(window, 1, 250, nullptr);
     }
     void text(HDC dc, std::wstring const& value, int x, int y, int w, int h, HFONT face, COLORREF color, UINT flags = DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS) {
-        RECT r{px(x),px(y),px(x+w),px(y+h)};
+        RECT r{px(x),px(y)-scroll,px(x+w),px(y+h)-scroll};
         SelectObject(dc, face); SetTextColor(dc, color); SetBkMode(dc, TRANSPARENT);
         DrawTextW(dc, value.c_str(), -1, &r, flags);
     }
     void spaced(HDC dc, std::wstring const& value, int y, HFONT face, int spacing) {
         SelectObject(dc, face); SetTextColor(dc, palette.text); SetBkMode(dc, TRANSPARENT);
         int x = px(30);
-        for (wchar_t c : value) { SIZE size{}; GetTextExtentPoint32W(dc, &c, 1, &size); TextOutW(dc, x, px(y), &c, 1); x += size.cx + px(spacing); }
+        for (wchar_t c : value) { SIZE size{}; GetTextExtentPoint32W(dc, &c, 1, &size); TextOutW(dc, x, px(y)-scroll, &c, 1); x += size.cx + px(spacing); }
     }
     void line(HDC dc, int y) {
         auto pen = CreatePen(PS_SOLID, 1, palette.line); auto old = SelectObject(dc, pen);
-        MoveToEx(dc, px(30), px(y), nullptr); LineTo(dc, px(510), px(y)); SelectObject(dc, old); DeleteObject(pen);
+        MoveToEx(dc, px(30), px(y)-scroll, nullptr); LineTo(dc, px(510), px(y)-scroll); SelectObject(dc, old); DeleteObject(pen);
     }
     void paint(HDC dc) {
         RECT r{}; GetClientRect(window, &r); FillRect(dc, &r, brush);
         spaced(dc, L"SCREENCAST", 24, title, 2);
-        text(dc, L"Запись экрана · MP4", 30, 54, 480, 20, small, palette.muted);
+        text(dc, L"Запись экрана · MP4", 30, 54, 480, 20, smallFont, palette.muted);
         line(dc, 128); spaced(dc, L"ИСТОЧНИК ВИДЕО", 144, heading, 1);
         line(dc, 268); spaced(dc, L"ЗВУК", 284, heading, 1);
         text(dc, controls[OutputMode].selected == 2 ? L"Выберите окно: записывается весь процесс и его дочерние процессы." :
-            L"Микрофон и выходной звук включаются независимо.", 30, 510, 480, 18, small, palette.muted);
+            L"Микрофон и выходной звук включаются независимо.", 30, 510, 480, 18, smallFont, palette.muted);
         line(dc, 540); spaced(dc, L"КАМЕРА И ФОН", 550, heading, 1);
-        text(dc, L"Для замены фона нужна дополнительная модель (отдельная загрузка).", 30, 730, 480, 18, small, palette.muted);
+        text(dc, L"Для замены фона нужна дополнительная модель (отдельная загрузка).", 30, 730, 480, 18, smallFont, palette.muted);
         line(dc, 756);
         auto label = status;
         if (recorder.recording()) {
@@ -184,7 +201,7 @@ public:
             swprintf_s(duration, L"Запись · %02lld:%02lld:%02lld", t / 3600, t / 60 % 60, t % 60);
             label = duration;
         }
-        text(dc, label, 30, 759, 480, 22, small, palette.muted);
+        text(dc, label, 30, 759, 480, 22, smallFont, palette.muted);
     }
     void draw(DRAWITEMSTRUCT const& item) {
         auto found = controls.find(static_cast<int>(item.CtlID)); if (found == controls.end()) return;
@@ -324,7 +341,7 @@ public:
         check(frame->WritePixels(h, w*4, w*h*4, static_cast<BYTE*>(bits))); check(frame->Commit()); check(encoder->Commit());
         SelectObject(mem, old); DeleteObject(bitmap); DeleteDC(mem); ReleaseDC(window, dc);
     }
-    ~App() { for (auto f : {font, small, heading, title}) if (f) DeleteObject(f); if (brush) DeleteObject(brush); }
+    ~App() { for (auto f : {font, smallFont, heading, title}) if (f) DeleteObject(f); if (brush) DeleteObject(brush); }
 };
 App* app{};
 LRESULT CALLBACK procedure(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam) {
@@ -332,18 +349,32 @@ LRESULT CALLBACK procedure(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam
         switch (message) {
         case WM_CREATE: app->window = hwnd; app->create(); return 0;
         case WM_COMMAND: if (HIWORD(wParam) == BN_CLICKED) app->command(LOWORD(wParam)); return 0;
+        case WM_VSCROLL: {
+            SCROLLINFO info{sizeof(info), SIF_ALL}; GetScrollInfo(hwnd, SB_VERT, &info);
+            int position = app->scroll;
+            switch (LOWORD(wParam)) {
+            case SB_LINEUP: position -= app->px(30); break;
+            case SB_LINEDOWN: position += app->px(30); break;
+            case SB_PAGEUP: position -= static_cast<int>(info.nPage); break;
+            case SB_PAGEDOWN: position += static_cast<int>(info.nPage); break;
+            case SB_THUMBTRACK: position = info.nTrackPos; break;
+            }
+            app->scrollTo(position); return 0;
+        }
+        case WM_MOUSEWHEEL: app->scrollTo(app->scroll - GET_WHEEL_DELTA_WPARAM(wParam) * app->px(60) / WHEEL_DELTA); return 0;
         case WM_DRAWITEM: app->draw(*reinterpret_cast<DRAWITEMSTRUCT*>(lParam)); return TRUE;
         case WM_PAINT: { PAINTSTRUCT ps{}; auto dc = BeginPaint(hwnd, &ps); app->paint(dc); EndPaint(hwnd, &ps); return 0; }
         case WM_ERASEBKGND: return 1;
         case WM_SETTINGCHANGE: if (!app->theme) app->applyTheme(); return 0;
         case WM_DPICHANGED: {
             int old = app->dpi; app->dpi = HIWORD(wParam); app->fonts();
+            app->scroll = MulDiv(app->scroll, app->dpi, old);
             for (auto const& [id, c] : app->controls) {
                 RECT r{}; GetWindowRect(c.window, &r); MapWindowPoints(nullptr, hwnd, reinterpret_cast<POINT*>(&r), 2);
                 SetWindowPos(c.window, nullptr, MulDiv(r.left, app->dpi, old), MulDiv(r.top, app->dpi, old),
                     MulDiv(r.right-r.left, app->dpi, old), MulDiv(r.bottom-r.top, app->dpi, old), SWP_NOZORDER);
             }
-            auto r = reinterpret_cast<RECT*>(lParam); SetWindowPos(hwnd, nullptr, r->left,r->top,r->right-r->left,r->bottom-r->top,SWP_NOZORDER); return 0;
+            auto r = reinterpret_cast<RECT*>(lParam); SetWindowPos(hwnd, nullptr, r->left,r->top,r->right-r->left,r->bottom-r->top,SWP_NOZORDER); app->scrollRange(); return 0;
         }
         case WM_TIMER:
             InvalidateRect(hwnd, nullptr, FALSE);
@@ -395,7 +426,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int show) {
         cls.hCursor = LoadCursorW(nullptr, IDC_ARROW); cls.hIcon = LoadIconW(nullptr, IDI_APPLICATION);
         cls.lpszClassName = L"ScreencastWindow"; RegisterClassExW(&cls);
         auto hwnd = CreateWindowExW(0, cls.lpszClassName, L"Screencast",
-            WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX, CW_USEDEFAULT, CW_USEDEFAULT, 560, 900, nullptr, nullptr, instance, nullptr);
+            WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX | WS_VSCROLL, CW_USEDEFAULT, CW_USEDEFAULT, 560, 900, nullptr, nullptr, instance, nullptr);
         if (!hwnd) check(HRESULT_FROM_WIN32(GetLastError()));
         ShowWindow(hwnd, show); UpdateWindow(hwnd);
         if (!state.snapshotPath.empty()) SetTimer(hwnd, 2, 1000, nullptr);

@@ -5,6 +5,7 @@
 #include <mfidl.h>
 #include <mfreadwrite.h>
 #include <winrt/base.h>
+#include <winrt/Windows.Foundation.h>
 #include <atomic>
 #include <algorithm>
 #include <array>
@@ -45,6 +46,7 @@ inline std::wstring errorText() {
 struct Image {
     int width{}, height{};
     std::vector<uint8_t> bgra;
+    int64_t time100ns{};
     bool empty() const { return bgra.empty(); }
 };
 struct Target {

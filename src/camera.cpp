@@ -37,6 +37,7 @@ Image loadImage(std::wstring const& path) {
 Image resizeImage(Image const& input, int width, int height) {
     if (input.empty() || width <= 0 || height <= 0) return {};
     Image out{width, height, std::vector<uint8_t>(static_cast<size_t>(width) * height * 4)};
+    out.time100ns = input.time100ns;
     for (int y = 0; y < height; ++y) for (int x = 0; x < width; ++x) {
         int sy = y * input.height / height, sx = x * input.width / width;
         memcpy(out.bgra.data() + (static_cast<size_t>(y) * width + x) * 4,
@@ -85,12 +86,12 @@ struct Camera::State {
         std::vector<float> rgb(plane * 3);
         for (size_t i = 0; i < plane; ++i) for (int c = 0; c < 3; ++c)
             rgb[static_cast<size_t>(c) * plane + i] = imageSmall.bgra[i * 4 + 2 - c] / 255.f;
-        auto tensor = TensorFloat::CreateFromArray(std::array<int64_t, 4>{1, 3, h, 256}, rgb);
+        auto tensor = TensorFloat::CreateFromArray({1, 3, h, 256}, rgb);
         LearningModelBinding binding(session);
         binding.Bind(L"src", tensor);
         const wchar_t* names[]{L"r1i", L"r2i", L"r3i", L"r4i"};
         for (int i = 0; i < 4; ++i) binding.Bind(names[i], recurrent[i]);
-        binding.Bind(L"downsample_ratio", TensorFloat::CreateFromArray(std::array<int64_t, 1>{1}, std::array<float, 1>{1.f}));
+        binding.Bind(L"downsample_ratio", TensorFloat::CreateFromArray({1}, std::array<float, 1>{1.f}));
         auto result = session.Evaluate(binding, L"camera");
         auto alpha = result.Outputs().Lookup(L"pha").as<TensorFloat>().GetAsVectorView();
         auto fg = result.Outputs().Lookup(L"fgr").as<TensorFloat>().GetAsVectorView();
@@ -151,6 +152,7 @@ public:
                     check(buffer->Unlock());
                 }
                 if (state->replace) image = state->matting(image);
+                image.time100ns = now;
                 {
                     std::lock_guard lock(state->mutex);
                     state->image = std::move(image); state->timestamp = clock100ns();
@@ -179,7 +181,7 @@ Camera::Camera(Settings const& settings) : state_(std::make_shared<State>()) {
         // CPU mode keeps the optional model usable on machines without a supported GPU.
         state_->session = LearningModelSession(model, LearningModelDevice(LearningModelDeviceKind::Cpu));
         for (auto& recurrent : state_->recurrent)
-            recurrent = TensorFloat::CreateFromArray(std::array<int64_t, 4>{1, 1, 1, 1}, std::array<float, 1>{0.f});
+            recurrent = TensorFloat::CreateFromArray({1, 1, 1, 1}, std::array<float, 1>{0.f});
     }
     ComPtr<IMFAttributes> sourceAttributes; check(MFCreateAttributes(&sourceAttributes, 2));
     check(sourceAttributes->SetGUID(MF_DEVSOURCE_ATTRIBUTE_SOURCE_TYPE, MF_DEVSOURCE_ATTRIBUTE_SOURCE_TYPE_VIDCAP_GUID));
@@ -187,7 +189,7 @@ Camera::Camera(Settings const& settings) : state_(std::make_shared<State>()) {
     check(MFCreateDeviceSource(sourceAttributes.Get(), &source_));
     auto callback = Microsoft::WRL::Make<Callback>(state_);
     ComPtr<IMFAttributes> readerAttributes; check(MFCreateAttributes(&readerAttributes, 3));
-    check(readerAttributes->SetUnknown(MF_SOURCE_READER_ASYNC_CALLBACK, callback.Get()));
+    check(readerAttributes->SetUnknown(MF_SOURCE_READER_ASYNC_CALLBACK, static_cast<IMFSourceReaderCallback*>(callback.Get())));
     check(readerAttributes->SetUINT32(MF_SOURCE_READER_ENABLE_VIDEO_PROCESSING, TRUE));
     check(MFCreateSourceReaderFromMediaSource(source_.Get(), readerAttributes.Get(), &reader_));
     check(reader_->SetStreamSelection(MF_SOURCE_READER_ALL_STREAMS, FALSE));

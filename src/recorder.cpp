@@ -3,6 +3,7 @@
 #include "audio.h"
 #include "camera.h"
 #include <avrt.h>
+#include <deque>
 
 namespace {
 class Writer {
@@ -156,6 +157,9 @@ void Recorder::start(Settings settings, HWND notify) {
             if (system) system->start(epoch); if (mic) mic->start(epoch);
             recording_ = true;
             int64_t videoFrame{}, audioFrame{}, nextDiskCheck{}, stopAt{};
+            std::deque<Image> videoQueue, cameraQueue;
+            Image cameraImage;
+            int64_t lastCameraTimestamp{};
             dsp::NoiseSuppressor suppressor;
             std::vector<int16_t> pcm;
             // Delay output by 150 ms so audio packets arrive before their timeline is mixed.
@@ -166,11 +170,24 @@ void Recorder::start(Settings settings, HWND notify) {
                 if (system) system->poll(); if (mic) mic->poll();
                 if (process.value && WaitForSingleObject(process.value, 0) == WAIT_OBJECT_0)
                     throw winrt::hresult_error(E_ABORT, L"Приложение, звук которого записывался, завершилось");
-                Image fresh; if (capture.next(fresh)) image = std::move(fresh);
+                Image fresh; if (capture.next(fresh)) videoQueue.push_back(std::move(fresh));
+                if (camera) {
+                    auto value = camera->latest();
+                    if (!value.empty() && value.time100ns > lastCameraTimestamp) {
+                        lastCameraTimestamp = value.time100ns; cameraQueue.push_back(std::move(value));
+                    }
+                }
                 int64_t ready = std::min(now - latency, stopAt ? stopAt : now);
                 while (videoFrame * 10000000 / settings.fps <= ready) {
+                    auto due = epoch + videoFrame * 10000000 / settings.fps;
+                    while (!videoQueue.empty() && videoQueue.front().time100ns <= due) {
+                        image = std::move(videoQueue.front()); videoQueue.pop_front();
+                    }
+                    while (!cameraQueue.empty() && cameraQueue.front().time100ns <= due) {
+                        cameraImage = std::move(cameraQueue.front()); cameraQueue.pop_front();
+                    }
                     Image output = image;
-                    if (camera) compositeCamera(output, camera->latest(), settings.corner);
+                    if (camera) compositeCamera(output, cameraImage, settings.corner);
                     writer->video(output, videoFrame++);
                     // Falling behind by >3 s signals overload instead of allocating an unbounded queue.
                     if (clock100ns() - epoch - videoFrame * 10000000 / settings.fps > 30000000)

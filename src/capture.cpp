@@ -4,7 +4,6 @@
 #include <dwmapi.h>
 #include <dxgi.h>
 using namespace winrt;
-using namespace winrt::Windows::Graphics;
 using namespace winrt::Windows::Graphics::Capture;
 using namespace winrt::Windows::Graphics::DirectX;
 using namespace winrt::Windows::Graphics::DirectX::Direct3D11;
@@ -91,6 +90,7 @@ bool Capture::next(Image& image) {
     check(context_->Map(staging_.Get(), 0, D3D11_MAP_READ, 0, &mapped));
     image.width = std::min(newSize.Width, static_cast<int>(desc.Width));
     image.height = std::min(newSize.Height, static_cast<int>(desc.Height));
+    image.time100ns = frame.SystemRelativeTime().count();
     image.bgra.resize(static_cast<size_t>(image.width) * image.height * 4);
     for (int y = 0; y < image.height; ++y) memcpy(image.bgra.data() + static_cast<size_t>(y) * image.width * 4,
         static_cast<uint8_t*>(mapped.pData) + static_cast<size_t>(y) * mapped.RowPitch, image.width * 4);
