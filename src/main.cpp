@@ -8,6 +8,7 @@
 #include <shellapi.h>
 #include <wincodec.h>
 #include <map>
+#include <fstream>
 
 int encoderSelfTest(std::wstring const& directory);
 namespace {
@@ -27,7 +28,8 @@ public:
     HFONT font{}, smallFont{}, heading{}, title{};
     HBRUSH brush{};
     std::map<int, Control> controls;
-    std::vector<Target> screens, windowList;
+    std::vector<Target> screens, windowList, processList;
+    int previousAudioMode{1}, systemOutputIndex{}, processIndex{};
     std::vector<Device> microphones, outputs, cameras;
     Recorder recorder;
     std::wstring path, backgroundPath, lastFile, status{L"Готов к записи"};
@@ -37,7 +39,7 @@ public:
     int px(int value) const { return MulDiv(value, dpi, 96); }
     void scrollTo(int position) {
         RECT r{}; GetClientRect(window, &r);
-        position = std::clamp(position, 0, std::max(0, px(848) - r.bottom));
+        position = std::clamp(position, 0, std::max(0, px(848) - static_cast<int>(r.bottom)));
         int delta = scroll - position; scroll = position;
         SetScrollPos(window, SB_VERT, scroll, TRUE);
         ScrollWindowEx(window, 0, delta, nullptr, nullptr, nullptr, nullptr, SW_SCROLLCHILDREN | SW_INVALIDATE | SW_ERASE);
@@ -99,8 +101,22 @@ public:
             auto index = controls[id].selected;
             return index < static_cast<int>(devices.size()) ? devices[index].id : std::wstring{};
         };
-        auto micId = previousId(MicDevice, microphones), outputId = previousId(OutputDevice, outputs), cameraId = previousId(CameraDevice, cameras);
+        auto micId = previousId(MicDevice, microphones), cameraId = previousId(CameraDevice, cameras);
+        if (previousAudioMode != 2) systemOutputIndex = controls[OutputDevice].selected;
+        else processIndex = controls[OutputDevice].selected;
+        auto outputId = systemOutputIndex < static_cast<int>(outputs.size()) ? outputs[systemOutputIndex].id : std::wstring{};
+        Target oldProcess{};
+        if (processIndex < static_cast<int>(processList.size())) oldProcess = processList[processIndex];
         screens = monitors(); windowList = windows();
+        processList.clear();
+        for (auto const& target : windowList) {
+            if (!target.creationTime) continue;
+            if (std::none_of(processList.begin(), processList.end(), [&](auto const& other) { return other.pid == target.pid; }))
+                processList.push_back(target);
+        }
+        processIndex = 0;
+        for (size_t i = 0; i < processList.size(); ++i) if (processList[i].pid == oldProcess.pid && processList[i].creationTime == oldProcess.creationTime)
+            processIndex = static_cast<int>(i);
         microphones = audioDevices(true); outputs = audioDevices(false); cameras = cameraDevices();
         auto labels = [](auto const& devices) { std::vector<std::wstring> values; for (auto const& d : devices) values.push_back(d.name); return values; };
         setItems(MicDevice, labels(microphones)); setItems(OutputDevice, labels(outputs)); setItems(CameraDevice, labels(cameras));
@@ -110,6 +126,8 @@ public:
             updateText(id);
         };
         restore(MicDevice, microphones, micId); restore(OutputDevice, outputs, outputId); restore(CameraDevice, cameras, cameraId);
+        systemOutputIndex = controls[OutputDevice].selected;
+        outputItems(false);
         sourceItems();
         auto const& current = controls[SourceKind].selected == 0 ? screens : windowList;
         for (size_t i = 0; i < current.size(); ++i)
@@ -122,13 +140,26 @@ public:
         std::vector<std::wstring> labels; for (auto const& t : list) labels.push_back(t.name);
         controls[Source].selected = 0; setItems(Source, std::move(labels));
     }
+    void outputItems(bool preserve = true) {
+        if (preserve) {
+            if (previousAudioMode == 2) processIndex = controls[OutputDevice].selected;
+            else systemOutputIndex = controls[OutputDevice].selected;
+        }
+        auto mode = controls[OutputMode].selected;
+        std::vector<std::wstring> names;
+        if (mode == 2) for (auto const& process : processList)
+            names.push_back(process.name + L" · PID " + std::to_wstring(process.pid));
+        else for (auto const& device : outputs) names.push_back(device.name);
+        controls[OutputDevice].selected = mode == 2 ? processIndex : systemOutputIndex;
+        setItems(OutputDevice, std::move(names)); previousAudioMode = mode;
+    }
     void enabled() {
         bool idle = !recorder.busy() && !finishing;
         for (auto& [id, control] : controls) {
             if (id == Start || id >= ThemeSystem) continue;
             bool enable = idle;
             if (id == MicDevice || id == Denoise) enable &= controls[Microphone].checked;
-            if (id == OutputDevice) enable &= controls[OutputMode].selected == 1;
+            if (id == OutputDevice) enable &= controls[OutputMode].selected != 0;
             if (id == CameraDevice || id == Corner || id == Background) enable &= controls[Webcam].checked && !cameras.empty();
             if (id == BackgroundFile) enable &= controls[Webcam].checked && controls[Background].checked;
             EnableWindow(control.window, enable);
@@ -147,7 +178,7 @@ public:
         add(Refresh, Kind::Button, L"Обновить", 400, 170, 110, 34);
         add(Source, Kind::Choice, L"Экран / окно", 30, 214, 480, 34);
         add(OutputMode, Kind::Choice, L"Выходной звук", 30, 306, 480, 34);
-        setItems(OutputMode, {L"Звук выключен", L"Системный звук", L"Звук приложения выбранного окна"});
+        setItems(OutputMode, {L"Звук выключен", L"Системный звук", L"Звук выбранного приложения / процесса"});
         controls[OutputMode].selected = 1; updateText(OutputMode);
         add(OutputDevice, Kind::Choice, L"Устройство системного звука", 30, 350, 480, 34);
         add(Microphone, Kind::Toggle, L"Микрофон", 30, 394, 480, 30); setChecked(Microphone, true);
@@ -190,7 +221,7 @@ public:
         text(dc, L"Запись экрана · MP4", 30, 54, 480, 20, smallFont, palette.muted);
         line(dc, 128); spaced(dc, L"ИСТОЧНИК ВИДЕО", 144, heading, 1);
         line(dc, 268); spaced(dc, L"ЗВУК", 284, heading, 1);
-        text(dc, controls[OutputMode].selected == 2 ? L"Выберите окно: записывается весь процесс и его дочерние процессы." :
+        text(dc, controls[OutputMode].selected == 2 ? L"Записывается выбранный процесс и его дочерние процессы." :
             L"Микрофон и выходной звук включаются независимо.", 30, 510, 480, 18, smallFont, palette.muted);
         line(dc, 540); spaced(dc, L"КАМЕРА И ФОН", 550, heading, 1);
         text(dc, L"Для замены фона нужна дополнительная модель (отдельная загрузка).", 30, 730, 480, 18, smallFont, palette.muted);
@@ -263,12 +294,13 @@ public:
         settings.target = targets.at(controls[Source].selected);
         settings.audio = static_cast<AudioMode>(controls[OutputMode].selected);
         if (settings.audio == AudioMode::Process) {
-            if (!settings.target.window) throw winrt::hresult_error(E_INVALIDARG, L"Для звука приложения выберите запись отдельного окна");
-            settings.audioPid = settings.target.pid;
+            if (processList.empty()) throw winrt::hresult_error(E_INVALIDARG, L"Нет доступных приложений для захвата звука");
+            auto const& process = processList.at(controls[OutputDevice].selected);
+            settings.audioPid = process.pid; settings.audioCreationTime = process.creationTime;
         }
         settings.mic = controls[Microphone].checked; settings.denoise = controls[Denoise].checked;
         settings.micId = microphones.at(controls[MicDevice].selected).id;
-        settings.outputId = outputs.at(controls[OutputDevice].selected).id;
+        if (settings.audio == AudioMode::System) settings.outputId = outputs.at(controls[OutputDevice].selected).id;
         settings.camera = controls[Webcam].checked;
         if (settings.camera) {
             if (cameras.empty()) throw winrt::hresult_error(E_INVALIDARG, L"Камера не подключена");
@@ -298,7 +330,11 @@ public:
             RECT r{}; GetWindowRect(control.window, &r);
             auto picked = TrackPopupMenu(menu, TPM_RETURNCMD | TPM_LEFTALIGN, r.left, r.bottom, 0, window, nullptr);
             DestroyMenu(menu);
-            if (picked) { control.selected = picked - 1; updateText(id); if (id == SourceKind) sourceItems(); }
+            if (picked) {
+                control.selected = picked - 1; updateText(id);
+                if (id == SourceKind) sourceItems();
+                if (id == OutputMode) outputItems();
+            }
             enabled();
         } else if (control.kind == Kind::Toggle) { setChecked(id, !control.checked); enabled(); }
         else if (id == Refresh) refresh();
@@ -408,13 +444,17 @@ LRESULT CALLBACK procedure(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam
 }
 int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int show) {
     int result = 1; bool mf{};
+    std::wstring diagnostics;
     try {
         winrt::init_apartment(winrt::apartment_type::single_threaded);
         check(MFStartup(MF_VERSION)); mf = true;
         int argc{}; auto argv = CommandLineToArgvW(GetCommandLineW(), &argc);
         std::vector<std::wstring> args; for (int i = 0; i < argc; ++i) args.emplace_back(argv[i]); LocalFree(argv);
-        if (args.size() >= 3 && args[1] == L"--self-test") {
-            result = encoderSelfTest(args[2]); MFShutdown(); winrt::uninit_apartment(); return result;
+        if (args.size() >= 3 && (args[1] == L"--self-test" || args[1] == L"--model-test")) {
+            std::filesystem::create_directories(args[2]); diagnostics = args[2] + L"\\test-error.txt";
+            if (args[1] == L"--self-test") result = encoderSelfTest(args[2]);
+            else { Camera::testModel(); result = 0; }
+            MFShutdown(); winrt::uninit_apartment(); return result;
         }
         App state; app = &state; state.readTheme();
         auto fontPath = executableDir() + L"\\assets\\Montserrat.ttf";
@@ -437,6 +477,10 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int show) {
         state.recorder.stop(); state.recorder.join();
         RemoveFontResourceExW(fontPath.c_str(), FR_PRIVATE, nullptr);
         result = value < 0 ? 1 : static_cast<int>(message.wParam);
-    } catch (...) { MessageBoxW(nullptr, errorText().c_str(), L"Screencast", MB_OK | MB_ICONERROR); }
+    } catch (...) {
+        auto message = errorText();
+        if (!diagnostics.empty()) { std::ofstream file{std::filesystem::path(diagnostics)}; file << winrt::to_string(winrt::hstring(message)); }
+        else MessageBoxW(nullptr, message.c_str(), L"Screencast", MB_OK | MB_ICONERROR);
+    }
     if (mf) MFShutdown(); winrt::uninit_apartment(); return result;
 }

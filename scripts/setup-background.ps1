@@ -6,7 +6,9 @@ $modelPath = Join-Path $targetDirectory 'rvm_mobilenetv3_fp32.onnx'
 $downloadPath = "$modelPath.download"
 $uri = 'https://github.com/PeterL1n/RobustVideoMatting/releases/download/v1.0.0/rvm_mobilenetv3_fp32.onnx'
 Invoke-WebRequest -Uri $uri -OutFile $downloadPath
-if ((Get-Item -LiteralPath $downloadPath).Length -lt 1000000) { throw 'Invalid or incomplete model download' }
+if ((Get-FileHash -LiteralPath $downloadPath -Algorithm SHA256).Hash -ne '88D4531297118F595BF2FD60F6F566AEC2E559393802D1F436C380F0CBBD2828') {
+    throw 'Model SHA256 mismatch; installation stopped'
+}
 Move-Item -LiteralPath $downloadPath -Destination $modelPath -Force
 Invoke-WebRequest -Uri 'https://raw.githubusercontent.com/PeterL1n/RobustVideoMatting/master/LICENSE' -OutFile (Join-Path $targetDirectory 'RVM-LICENSE.txt')
 Write-Host "Background model installed in $targetDirectory. RVM is GPL-3.0; see THIRD_PARTY.md."

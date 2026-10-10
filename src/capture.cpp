@@ -33,7 +33,15 @@ std::vector<Target> windows() {
         DWORD cloaked{}; DwmGetWindowAttribute(hwnd, DWMWA_CLOAKED, &cloaked, sizeof(cloaked));
         if (cloaked) return TRUE;
         wchar_t title[512]{}; if (!GetWindowTextW(hwnd, title, 512)) return TRUE;
-        reinterpret_cast<std::vector<Target>*>(param)->push_back({title, nullptr, hwnd, pid});
+        uint64_t creationTime{};
+        HANDLE process = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid);
+        if (process) {
+            FILETIME created{}, exited{}, kernel{}, user{};
+            if (GetProcessTimes(process, &created, &exited, &kernel, &user))
+                creationTime = (static_cast<uint64_t>(created.dwHighDateTime) << 32) | created.dwLowDateTime;
+            CloseHandle(process);
+        }
+        reinterpret_cast<std::vector<Target>*>(param)->push_back({title, nullptr, hwnd, pid, creationTime});
         return TRUE;
     }, reinterpret_cast<LPARAM>(&result));
     return result;

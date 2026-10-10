@@ -23,11 +23,19 @@ jobs:
           $outputDir = Join-Path $PWD 'build/smoke'
           $process = Start-Process build/Release/Screencast.exe -ArgumentList '--self-test', $outputDir -WindowStyle Hidden -PassThru
           if (-not $process.WaitForExit(120000)) { $process.Kill(); throw 'Encoder self-test timed out' }
-          if ($process.ExitCode -ne 0) { throw "Encoder self-test failed: $($process.ExitCode)" }
+          if ($process.ExitCode -ne 0) { Get-Content build/smoke/test-error.txt -ErrorAction SilentlyContinue; throw "Encoder self-test failed: $($process.ExitCode)" }
       - name: Decode and validate the generated recordings
         run: |
           python -m pip install av==16.0.1 numpy==2.2.6
           python tests/verify_mp4.py build/smoke
+      - name: Verify optional human matting model on Windows ML
+        shell: pwsh
+        run: |
+          ./scripts/setup-background.ps1 -AppDirectory ./build/Release
+          $outputDir = Join-Path $PWD 'build/smoke'
+          $process = Start-Process build/Release/Screencast.exe -ArgumentList '--model-test', $outputDir -WindowStyle Hidden -PassThru
+          if (-not $process.WaitForExit(120000)) { $process.Kill(); throw 'Model test timed out' }
+          if ($process.ExitCode -ne 0) { Get-Content build/smoke/test-error.txt -ErrorAction SilentlyContinue; throw 'Windows ML model test failed' }
       - name: Capture both UI themes
         shell: pwsh
         run: |

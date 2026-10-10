@@ -235,3 +235,27 @@ Image Camera::latest() {
         throw winrt::hresult_error(E_FAIL, L"Камера не передает кадры более пяти секунд");
     return state_->image;
 }
+void Camera::testModel() {
+    State state;
+    auto model = LearningModel::LoadFromFilePath(executableDir() + L"\\models\\rvm_mobilenetv3_fp32.onnx");
+    state.session = LearningModelSession(model, LearningModelDevice(LearningModelDeviceKind::Cpu));
+    for (auto& recurrent : state.recurrent)
+        recurrent = TensorFloat::CreateFromArray({1, 1, 1, 1}, std::array<float, 1>{0.f});
+    state.background = {64, 64, std::vector<uint8_t>(64 * 64 * 4)};
+    for (size_t i = 0; i < state.background.bgra.size(); i += 4) {
+        state.background.bgra[i] = 210; state.background.bgra[i+1] = 40;
+        state.background.bgra[i+2] = 20; state.background.bgra[i+3] = 255;
+    }
+    Image source{320, 240, std::vector<uint8_t>(320 * 240 * 4, 110)};
+    for (int frame = 0; frame < 2; ++frame) {
+        auto result = state.matting(source);
+        if (result.width != 256 || result.height != 192 || result.bgra.size() != 256 * 192 * 4)
+            throw winrt::hresult_error(E_FAIL, L"Неверный размер кадра после замены фона");
+        bool changed{};
+        for (size_t i = 0; i < result.bgra.size(); i += 4) {
+            changed |= std::abs(result.bgra[i] - 110) > 10;
+            if (result.bgra[i+3] != 255) throw winrt::hresult_error(E_FAIL, L"Неверный альфа-канал композиции");
+        }
+        if (!changed) throw winrt::hresult_error(E_FAIL, L"Замена фона не изменила кадр");
+    }
+}

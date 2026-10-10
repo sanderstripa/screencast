@@ -138,6 +138,11 @@ void Recorder::start(Settings settings, HWND notify) {
             if (settings.audio == AudioMode::Process) {
                 process.value = OpenProcess(SYNCHRONIZE | PROCESS_QUERY_LIMITED_INFORMATION, FALSE, settings.audioPid);
                 if (!process.value) throw winrt::hresult_error(HRESULT_FROM_WIN32(GetLastError()), L"Не удалось открыть выбранный процесс");
+                FILETIME created{}, exited{}, kernel{}, user{};
+                check(GetProcessTimes(process.value, &created, &exited, &kernel, &user) ? S_OK : HRESULT_FROM_WIN32(GetLastError()));
+                auto creation = (static_cast<uint64_t>(created.dwHighDateTime) << 32) | created.dwLowDateTime;
+                if (!settings.audioCreationTime || creation != settings.audioCreationTime)
+                    throw winrt::hresult_error(E_ABORT, L"Выбранный процесс изменился. Обновите список приложений");
             }
             if (settings.audio != AudioMode::Off) system = std::make_unique<AudioCapture>(false, settings.audio, settings.outputId, settings.audioPid);
             if (settings.mic) mic = std::make_unique<AudioCapture>(true, AudioMode::Off, settings.micId, 0);

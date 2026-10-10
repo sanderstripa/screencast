@@ -9,6 +9,7 @@ public:
     explicit Camera(Settings const& settings);
     ~Camera();
     Image latest();
+    static void testModel();
 private:
     struct State;
     class Callback;

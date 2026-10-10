@@ -54,6 +54,7 @@ struct Target {
     HMONITOR monitor{};
     HWND window{};
     DWORD pid{};
+    uint64_t creationTime{};
 };
 struct Device { std::wstring name, id; };
 enum class AudioMode { Off, System, Process };
@@ -61,6 +62,7 @@ struct Settings {
     Target target;
     AudioMode audio{AudioMode::System};
     DWORD audioPid{};
+    uint64_t audioCreationTime{};
     bool mic{true}, denoise{}, camera{}, replaceBackground{};
     std::wstring micId, outputId, cameraId, backgroundPath;
     int corner{3};
