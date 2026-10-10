@@ -372,7 +372,21 @@ public:
         BITMAPINFO info{}; info.bmiHeader.biSize = sizeof(BITMAPINFOHEADER); info.bmiHeader.biWidth = w;
         info.bmiHeader.biHeight = -h; info.bmiHeader.biPlanes = 1; info.bmiHeader.biBitCount = 32; info.bmiHeader.biCompression = BI_RGB;
         void* bits{}; HBITMAP bitmap = CreateDIBSection(dc, &info, DIB_RGB_COLORS, &bits, nullptr, 0);
-        auto old = SelectObject(mem, bitmap); PrintWindow(window, mem, PW_CLIENTONLY);
+        auto old = SelectObject(mem, bitmap);
+        // Use the exact production paint routines even on a hidden CI window.
+        // PrintWindow returns black for hidden windows on some Windows runners.
+        paint(mem);
+        for (auto const& [id, c] : controls) {
+            RECT rect{}; GetWindowRect(c.window, &rect);
+            MapWindowPoints(nullptr, window, reinterpret_cast<POINT*>(&rect), 2);
+            auto saved = SaveDC(mem); SetViewportOrgEx(mem, rect.left, rect.top, nullptr);
+            IntersectClipRect(mem, 0, 0, rect.right-rect.left, rect.bottom-rect.top);
+            DRAWITEMSTRUCT item{};
+            item.CtlID = id; item.hwndItem = c.window; item.hDC = mem; item.itemAction = ODA_DRAWENTIRE;
+            item.itemState = IsWindowEnabled(c.window) ? 0 : ODS_DISABLED;
+            item.rcItem = {0,0,rect.right-rect.left,rect.bottom-rect.top};
+            draw(item); RestoreDC(mem, saved);
+        }
         ComPtr<IWICImagingFactory> factory;
         check(CoCreateInstance(CLSID_WICImagingFactory, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&factory)));
         ComPtr<IWICStream> stream; check(factory->CreateStream(&stream)); check(stream->InitializeFromFilename(snapshotPath.c_str(), GENERIC_WRITE));
@@ -392,6 +406,8 @@ LRESULT CALLBACK procedure(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam
         switch (message) {
         case WM_CREATE: app->window = hwnd; app->create(); return 0;
         case WM_COMMAND:
+            if (LOWORD(wParam) == IDCANCEL) { SendMessageW(hwnd, WM_CLOSE, 0, 0); return 0; }
+            if (!app->controls.contains(LOWORD(wParam))) return 0;
             if (HIWORD(wParam) == BN_CLICKED) app->command(LOWORD(wParam));
             else if (HIWORD(wParam) == BN_SETFOCUS) app->reveal(LOWORD(wParam));
             return 0;
