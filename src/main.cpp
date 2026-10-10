@@ -51,6 +51,13 @@ public:
         info.nMax = px(848) - 1; info.nPage = r.bottom; info.nPos = scroll;
         SetScrollInfo(window, SB_VERT, &info, TRUE);
     }
+    void reveal(int id) {
+        auto found = controls.find(id); if (found == controls.end()) return;
+        RECT r{}, client{}; GetWindowRect(found->second.window, &r); GetClientRect(window, &client);
+        MapWindowPoints(nullptr, window, reinterpret_cast<POINT*>(&r), 2);
+        if (r.top < 0) scrollTo(scroll + r.top - px(10));
+        else if (r.bottom > client.bottom) scrollTo(scroll + r.bottom - client.bottom + px(10));
+    }
     void applyTheme() {
         DWORD light = 1, size = sizeof(light);
         RegGetValueW(HKEY_CURRENT_USER, L"Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize",
@@ -73,7 +80,7 @@ public:
         heading = make(12, FW_MEDIUM); title = make(23, FW_MEDIUM);
     }
     void add(int id, Kind kind, std::wstring label, int x, int y, int w, int h) {
-        auto hwnd = CreateWindowExW(0, L"BUTTON", label.c_str(), WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_OWNERDRAW,
+        auto hwnd = CreateWindowExW(0, L"BUTTON", label.c_str(), WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_OWNERDRAW | BS_NOTIFY,
             px(x), px(y), px(w), px(h), window, reinterpret_cast<HMENU>(static_cast<INT_PTR>(id)), GetModuleHandleW(nullptr), nullptr);
         controls[id] = {hwnd, kind, label};
     }
@@ -384,7 +391,10 @@ LRESULT CALLBACK procedure(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam
     try {
         switch (message) {
         case WM_CREATE: app->window = hwnd; app->create(); return 0;
-        case WM_COMMAND: if (HIWORD(wParam) == BN_CLICKED) app->command(LOWORD(wParam)); return 0;
+        case WM_COMMAND:
+            if (HIWORD(wParam) == BN_CLICKED) app->command(LOWORD(wParam));
+            else if (HIWORD(wParam) == BN_SETFOCUS) app->reveal(LOWORD(wParam));
+            return 0;
         case WM_VSCROLL: {
             SCROLLINFO info{sizeof(info), SIF_ALL}; GetScrollInfo(hwnd, SB_VERT, &info);
             int position = app->scroll;
@@ -413,7 +423,7 @@ LRESULT CALLBACK procedure(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam
             auto r = reinterpret_cast<RECT*>(lParam); SetWindowPos(hwnd, nullptr, r->left,r->top,r->right-r->left,r->bottom-r->top,SWP_NOZORDER); app->scrollRange(); return 0;
         }
         case WM_TIMER:
-            InvalidateRect(hwnd, nullptr, FALSE);
+            { RECT r{app->px(30), app->px(759)-app->scroll, app->px(510), app->px(781)-app->scroll}; InvalidateRect(hwnd, &r, FALSE); }
             if (wParam == 2) { KillTimer(hwnd, 2); app->snapshot(); DestroyWindow(hwnd); }
             return 0;
         case WM_RECORD_STATUS: {

@@ -77,6 +77,7 @@ AudioCapture::AudioCapture(bool mic, AudioMode mode, std::wstring const& endpoin
     if (tag == WAVE_FORMAT_EXTENSIBLE) {
         if (format_->cbSize < 22) throw winrt::hresult_error(E_NOTIMPL, L"Некорректный аудиоформат устройства");
         auto ext = reinterpret_cast<WAVEFORMATEXTENSIBLE*>(format_);
+        channelMask_ = ext->dwChannelMask;
         if (ext->SubFormat == KSDATAFORMAT_SUBTYPE_IEEE_FLOAT) tag = WAVE_FORMAT_IEEE_FLOAT;
         else if (ext->SubFormat == KSDATAFORMAT_SUBTYPE_PCM) tag = WAVE_FORMAT_PCM;
         else tag = 0;
@@ -114,12 +115,34 @@ void AudioCapture::poll() {
             int32_t v = data[offset] | (data[offset + 1] << 8) | (data[offset + 2] << 16);
             if (v & 0x800000) v |= static_cast<int32_t>(0xff000000); return v / 8388608.f;
         };
+        auto stereo = [&](UINT32 frame) -> std::array<float, 2> {
+            if (format_->nChannels == 1) { auto value = sample(frame, 0); return {value, value}; }
+            if (format_->nChannels == 2) return {sample(frame, 0), sample(frame, 1)};
+            std::array<float, 2> value{};
+            DWORD remaining = channelMask_;
+            for (int channel = 0; channel < format_->nChannels; ++channel) {
+                DWORD speaker{};
+                if (remaining) { speaker = remaining & (~remaining + 1); remaining &= ~speaker; }
+                else speaker = channel < 2 ? (channel == 0 ? SPEAKER_FRONT_LEFT : SPEAKER_FRONT_RIGHT) : SPEAKER_FRONT_CENTER;
+                float v = sample(frame, channel);
+                switch (speaker) {
+                case SPEAKER_FRONT_LEFT: value[0] += v; break;
+                case SPEAKER_FRONT_RIGHT: value[1] += v; break;
+                case SPEAKER_BACK_LEFT: case SPEAKER_SIDE_LEFT: case SPEAKER_FRONT_LEFT_OF_CENTER: value[0] += .5f * v; break;
+                case SPEAKER_BACK_RIGHT: case SPEAKER_SIDE_RIGHT: case SPEAKER_FRONT_RIGHT_OF_CENTER: value[1] += .5f * v; break;
+                case SPEAKER_LOW_FREQUENCY: value[0] += .25f * v; value[1] += .25f * v; break;
+                default: value[0] += .7071f * v; value[1] += .7071f * v; break;
+                }
+            }
+            return value;
+        };
         for (int i = 0; i < count; ++i) {
             double source = static_cast<double>(i) * format_->nSamplesPerSec / dsp::Rate;
             auto a = std::min(static_cast<UINT32>(source), frames - 1);
             auto b = std::min(a + 1, frames - 1); float blend = static_cast<float>(source - a);
-            float left = sample(a, 0) * (1 - blend) + sample(b, 0) * blend;
-            float right = sample(a, 1) * (1 - blend) + sample(b, 1) * blend;
+            auto first = stereo(a), second = stereo(b);
+            float left = first[0] * (1 - blend) + second[0] * blend;
+            float right = first[1] * (1 - blend) + second[1] * blend;
             timeline_.put(base + i, left, right);
         }
         check(capture_->ReleaseBuffer(frames));

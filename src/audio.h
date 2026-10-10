@@ -18,6 +18,7 @@ private:
     std::vector<uint8_t> formatBytes_;
     WAVEFORMATEX* format_{};
     bool floating_{}, started_{};
+    DWORD channelMask_{};
     int64_t epoch_{};
     dsp::Timeline timeline_;
 };
