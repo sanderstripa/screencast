@@ -17,7 +17,12 @@ public:
     Dropdown(std::vector<std::wstring> const& values,HFONT face,int scale,int current,
         COLORREF bg,COLORREF fg,COLORREF border,COLORREF hot)
         :items(values),font(face),background(bg),text(fg),line(border),hover(hot),
-         dpi(scale),selected(current),highlight(current) {}
+         dpi(scale),selected(current),highlight(current) {
+        LOGFONTW attributes{};GetObjectW(face,sizeof(attributes),&attributes);font=CreateFontIndirectW(&attributes);
+    }
+    ~Dropdown(){if(font)DeleteObject(font);}
+    Dropdown(Dropdown const&)=delete;
+    Dropdown& operator=(Dropdown const&)=delete;
     int px(int value) const {return MulDiv(value,dpi,96);}
     int hit(int y) const {int row=(y-px(6))/px(34);return y>=px(6) && row<rows && first+row<int(items.size())?first+row:-1;}
     void reveal() {first=std::clamp(first,0,std::max(0,int(items.size())-rows));
@@ -78,6 +83,7 @@ public:
     }
     int show(HWND owner,RECT anchor,void (*onOpened)(HWND)=nullptr) {
         if(items.empty())return 0;
+        auto previousFocus=GetFocus();
         MONITORINFO monitor{sizeof(monitor)};GetMonitorInfoW(MonitorFromRect(&anchor,MONITOR_DEFAULTTONEAREST),&monitor);
         auto work=monitor.rcWork;
         width=anchor.right-anchor.left;
@@ -105,7 +111,7 @@ public:
             TranslateMessage(&msg);DispatchMessageW(&msg);
         }
         if(GetCapture()==window)ReleaseCapture();DestroyWindow(window);
-        if(IsWindow(owner)){SetActiveWindow(owner);SetFocus(owner);}
+        if(IsWindow(owner)){SetActiveWindow(owner);SetFocus(IsWindow(previousFocus)?previousFocus:owner);}
         return result;
     }
 };

@@ -74,6 +74,16 @@ public:
     bool mouseFocusSnapshot{},dropdownSnapshot{};
     std::wstring idleTestPath;int idleTestPhase{},idlePaints{};
     Palette palette{};
+    std::map<int,HICON> windowIcons;
+    HICON windowIcon(WPARAM kind,LPARAM requestedDpi) {
+        UINT scale=requestedDpi>0 && requestedDpi<=768?UINT(requestedDpi):GetDpiForWindow(window);
+        // SMALL is the caption. SMALL2 is also queried by the shell: provide a
+        // full-resolution icon rather than the former fixed 16-pixel bitmap.
+        int size=GetSystemMetricsForDpi(kind==ICON_SMALL?SM_CXSMICON:SM_CXICON,scale);
+        auto& icon=windowIcons[size];
+        if(!icon)icon=static_cast<HICON>(LoadImageW(GetModuleHandleW(nullptr),MAKEINTRESOURCEW(101),IMAGE_ICON,size,size,0));
+        return icon;
+    }
     std::shared_ptr<LiveSettings> live=std::make_shared<LiveSettings>();
     bool dragging{}; Point dragOffset{};
     RECT previewRect{};
@@ -547,13 +557,14 @@ public:
         check(frame->WritePixels(h, w*4, w*h*4, static_cast<BYTE*>(bits))); check(frame->Commit()); check(encoder->Commit());
         SelectObject(mem, old); DeleteObject(bitmap); DeleteDC(mem); ReleaseDC(window, dc);
     }
-    ~App() { if(modelDownload)CloseHandle(modelDownload);for (auto f : {font, smallFont, heading, title}) if (f) DeleteObject(f); if (brush) DeleteObject(brush); }
+    ~App() { for(auto const& [size,icon]:windowIcons)if(icon)DestroyIcon(icon);if(modelDownload)CloseHandle(modelDownload);for (auto f : {font, smallFont, heading, title}) if (f) DeleteObject(f); if (brush) DeleteObject(brush); }
 };
 App* app{};
 LRESULT CALLBACK procedure(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam) {
     try {
         switch (message) {
         case WM_CREATE: app->window = hwnd; app->create(); return 0;
+        case WM_GETICON:return reinterpret_cast<LRESULT>(app->windowIcon(wParam,lParam));
         case WM_COMMAND:
             if (LOWORD(wParam) == IDCANCEL) { SendMessageW(hwnd, WM_CLOSE, 0, 0); return 0; }
             if (!app->controls.contains(LOWORD(wParam))) return 0;
@@ -678,6 +689,8 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int show) {
         auto hwnd = CreateWindowExW(0, cls.lpszClassName, L"Screencast",
             WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX | WS_CLIPCHILDREN, CW_USEDEFAULT, CW_USEDEFAULT, 1040, 700, nullptr, nullptr, instance, nullptr);
         if (!hwnd) check(HRESULT_FROM_WIN32(GetLastError()));
+        SendMessageW(hwnd,WM_SETICON,ICON_BIG,reinterpret_cast<LPARAM>(state.windowIcon(ICON_BIG,0)));
+        SendMessageW(hwnd,WM_SETICON,ICON_SMALL,reinterpret_cast<LPARAM>(state.windowIcon(ICON_SMALL2,0)));
         ShowWindow(hwnd, show); UpdateWindow(hwnd);
         if (!state.snapshotPath.empty()) SetTimer(hwnd, 2, 1000, nullptr);
         if(!state.idleTestPath.empty())SetTimer(hwnd,3,1000,nullptr);

@@ -5,14 +5,12 @@
  <linearGradient id="front" x2="1" y2="1"><stop stop-color="#ffffff"/><stop offset=".45" stop-color="#edf7ff"/><stop offset="1" stop-color="#abd5f7"/></linearGradient>
  <linearGradient id="blue" x2="1" y2="1"><stop stop-color="#29b6fa"/><stop offset=".5" stop-color="#0989ff"/><stop offset="1" stop-color="#0053f6"/></linearGradient>
 </defs>
-<g transform="translate(-99 -85) scale(1.2)">
+<g transform="translate(-128 -110.5) scale(1.25)">
 <rect x="102" y="102" width="820" height="792" rx="185" fill="url(#base)"/>
-<g transform="translate(-129.5 -120) scale(1.25)">
 <rect x="331" y="219" width="497" height="425" rx="62" fill="url(#back)"/>
 <rect x="213" y="303" width="531" height="429" rx="54" fill="url(#front)"/>
 <circle cx="287" cy="371" r="28" fill="#ff252d"/>
 <rect x="316" y="430" width="244" height="190" rx="43" fill="url(#blue)"/>
 <path d="M592 481 L639 453 Q671 436 671 470 L671 582 Q671 619 640 603 L593 574 Q576 565 576 547 L576 507 Q576 490 592 481Z" fill="url(#blue)"/>
-</g>
 </g>
 </svg>

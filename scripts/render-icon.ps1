@@ -12,9 +12,8 @@ function FillGradient($g,$path,$a,$b) {
 New-Item -ItemType Directory -Force $Destination | Out-Null
 $master=[Drawing.Bitmap]::new(2048,2048,[Drawing.Imaging.PixelFormat]::Format32bppArgb)
 $g=[Drawing.Graphics]::FromImage($master);$g.Clear([Drawing.Color]::Transparent);$g.SmoothingMode='AntiAlias';$g.ScaleTransform(2,2)
-$g.TranslateTransform(-99,-85);$g.ScaleTransform(1.2,1.2)
+$g.TranslateTransform(-128,-110.5);$g.ScaleTransform(1.25,1.25)
 FillGradient $g (RoundPath 102 102 820 792 185) '#213e68' '#091425'
-$g.TranslateTransform(-129.5,-120);$g.ScaleTransform(1.25,1.25)
 FillGradient $g (RoundPath 331 219 497 425 62) '#405f88' '#253957'
 FillGradient $g (RoundPath 213 303 531 429 54) '#ffffff' '#abd5f7'
 $red=[Drawing.SolidBrush]::new([Drawing.ColorTranslator]::FromHtml('#ff252d'));$g.FillEllipse($red,259,343,56,56);$red.Dispose()
