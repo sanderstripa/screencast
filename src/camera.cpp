@@ -46,19 +46,29 @@ Image resizeImage(Image const& input, int width, int height) {
     return out;
 }
 void compositeCamera(Image& screen, Image const& camera, int corner) {
+    compositeCamera(screen, camera, Point{float(corner % 2), float(corner / 2)});
+}
+void compositeCamera(Image& screen, Image const& camera, Point position) {
     if (camera.empty() || screen.empty()) return;
     int diameter = std::min(screen.width, screen.height) / 4;
     if (diameter < 8) return;
-    int margin = std::max(4, diameter / 12);
-    int left = (corner % 2) ? screen.width - diameter - margin : margin;
-    int top = (corner / 2) ? screen.height - diameter - margin : margin;
-    float radius = diameter * .5f;
+    auto placement = circlePlacement(screen.width, screen.height, position);
+    int left = placement.left, top = placement.top;
+    // Cache coverage: movement must not recompute a square root for every pixel.
+    thread_local int cachedDiameter{};
+    thread_local std::vector<float> coverage;
+    if (cachedDiameter != diameter) {
+        cachedDiameter = diameter; coverage.resize(static_cast<size_t>(diameter)*diameter);
+        for (int y=0;y<diameter;++y) for(int x=0;x<diameter;++x) {
+            float dx=x+.5f-diameter*.5f, dy=y+.5f-diameter*.5f;
+            coverage[static_cast<size_t>(y)*diameter+x]=std::clamp(diameter*.5f-std::sqrt(dx*dx+dy*dy),0.f,1.f);
+        }
+    }
     // Crop camera to a square before fitting into the circular mask.
     int crop = std::min(camera.width, camera.height);
     int cropX = (camera.width - crop) / 2, cropY = (camera.height - crop) / 2;
     for (int y = 0; y < diameter; ++y) for (int x = 0; x < diameter; ++x) {
-        float dx = x + .5f - radius, dy = y + .5f - radius;
-        float edge = std::clamp(radius - std::sqrt(dx * dx + dy * dy), 0.f, 1.f);
+        float edge = coverage[static_cast<size_t>(y)*diameter+x];
         if (edge == 0) continue;
         int sx = cropX + x * crop / diameter, sy = cropY + y * crop / diameter;
         auto src = camera.bgra.data() + (static_cast<size_t>(sy) * camera.width + sx) * 4;
@@ -67,8 +77,39 @@ void compositeCamera(Image& screen, Image const& camera, int corner) {
         dest[3] = 255;
     }
 }
+Image backgroundImage(BackgroundMode mode, int preset, int width, int height) {
+    const std::array<std::array<int,3>,4> colors{{{48,49,52},{244,241,234},{221,224,226},{220,205,184}}};
+    auto a=colors[std::clamp(preset,0,3)], b=colors[(std::clamp(preset,0,3)+1)%4];
+    Image image{width,height,std::vector<uint8_t>(static_cast<size_t>(width)*height*4)};
+    for(int y=0;y<height;++y) for(int x=0;x<width;++x) {
+        float t=mode==BackgroundMode::Gradient ? float(x+y)/std::max(1,width+height-2) : 0.f;
+        auto p=image.bgra.data()+(static_cast<size_t>(y)*width+x)*4;
+        for(int c=0;c<3;++c) p[c]=static_cast<uint8_t>(a[2-c]*(1-t)+b[2-c]*t); p[3]=255;
+    }
+    return image;
+}
+Image blurImage(Image const& image,int radius) {
+    if(image.empty()) return {};
+    Image out=image,temp=image; radius=std::clamp(radius,1,40);
+    // Three separable box passes approximate Gaussian blur in O(pixels), independent of radius.
+    for(int pass=0;pass<3;++pass) for(int axis=0;axis<2;++axis) {
+        int length=axis?image.height:image.width, rows=axis?image.width:image.height;
+        for(int row=0;row<rows;++row) for(int c=0;c<3;++c) {
+            auto index=[&](int value) { int x=axis?row:std::clamp(value,0,length-1),y=axis?std::clamp(value,0,length-1):row; return (static_cast<size_t>(y)*image.width+x)*4+c; };
+            int sum{}; for(int i=-radius;i<=radius;++i) sum+=out.bgra[index(i)];
+            for(int i=0;i<length;++i) { temp.bgra[index(i)]=static_cast<uint8_t>(sum/(radius*2+1)); sum+=out.bgra[index(i+radius+1)]-out.bgra[index(i-radius)]; }
+        }
+        std::swap(out.bgra,temp.bgra);
+    }
+    return out;
+}
 struct Camera::State {
     std::mutex mutex;
+    std::condition_variable changed;
+    std::thread processor;
+    std::shared_ptr<Image const> raw, published;
+    std::shared_ptr<LiveSettings> live;
+    std::wstring customPath;
     Image image, background;
     std::atomic_bool stopped{};
     int width{}, height{}, stride{};
@@ -78,6 +119,53 @@ struct Camera::State {
     std::array<TensorFloat, 4> recurrent{nullptr, nullptr, nullptr, nullptr};
     bool replace{};
     ComPtr<IMFSourceReader> reader;
+
+    void format() {
+        ComPtr<IMFMediaType> type; check(reader->GetCurrentMediaType(MF_SOURCE_READER_FIRST_VIDEO_STREAM,&type));
+        UINT32 w{},h{},pitch{}; check(MFGetAttributeSize(type.Get(),MF_MT_FRAME_SIZE,&w,&h));
+        if(!w || !h || w>4096 || h>4096) throw winrt::hresult_error(E_INVALIDARG,L"Размер кадра камеры не поддерживается");
+        width=w; height=h;
+        if(FAILED(type->GetUINT32(MF_MT_DEFAULT_STRIDE,&pitch))) {
+            LONG value{}; check(MFGetStrideForBitmapInfoHeader(MFVideoFormat_RGB32.Data1,w,&value)); pitch=static_cast<UINT32>(value);
+        }
+        stride=static_cast<LONG>(pitch);
+    }
+    void process() {
+        winrt::init_apartment(winrt::apartment_type::multi_threaded);
+        try {
+            int64_t last{};
+            BackgroundMode previous=BackgroundMode::Original; int preset=-1;
+            while(!stopped) {
+                std::shared_ptr<Image const> input;
+                { std::unique_lock lock(mutex); changed.wait_for(lock,std::chrono::milliseconds(100),[&]{return stopped || (raw && raw->time100ns!=last);});
+                  if(stopped) break; input=raw; }
+                if(!input || input->time100ns==last) continue; last=input->time100ns;
+                auto mode=live->background.load(); auto selected=live->backgroundPreset.load();
+                if(mode==BackgroundMode::Original) { std::lock_guard lock(mutex); published=input; changed.notify_all(); continue; }
+                if(!session) {
+                    auto path=executableDir()+L"\\models\\rvm_mobilenetv3_fp32.onnx";
+                    if(!std::filesystem::exists(path)) throw winrt::hresult_error(E_FAIL,L"Для обработки фона установите модель: scripts/setup-background.ps1");
+                    auto model=LearningModel::LoadFromFilePath(path);
+                    try { session=LearningModelSession(model,LearningModelDevice(LearningModelDeviceKind::DirectXHighPerformance)); }
+                    catch(...) { session=LearningModelSession(model,LearningModelDevice(LearningModelDeviceKind::Cpu)); }
+                    for(auto& value:recurrent) value=TensorFloat::CreateFromArray({1,1,1,1},std::array<float,1>{0.f});
+                }
+                if(mode!=previous || selected!=preset || background.empty()) {
+                    if(mode==BackgroundMode::Custom) background=loadImage(customPath);
+                    else if(mode==BackgroundMode::Interior) {
+                        const wchar_t* names[]{L"milk-room.jpg",L"beige-room.jpg",L"grey-room.jpg"};
+                        background=loadImage(executableDir()+L"\\assets\\backgrounds\\"+names[std::clamp(selected,0,2)]);
+                    } else background=backgroundImage(mode,selected,256,std::max(32,input->height*256/input->width));
+                    previous=mode; preset=selected;
+                }
+                if(mode==BackgroundMode::Blur) background=blurImage(resizeImage(*input,256,std::max(32,input->height*256/input->width)),live->blurStrength);
+                auto output=std::make_shared<Image>(matting(*input)); output->time100ns=input->time100ns;
+                { std::lock_guard lock(mutex); published=std::move(output); changed.notify_all(); }
+            }
+        } catch(...) { std::lock_guard lock(mutex); error=errorText(); changed.notify_all(); }
+        session=nullptr; for(auto& value:recurrent) value=nullptr;
+        winrt::uninit_apartment();
+    }
 
     Image matting(Image const& source) {
         int h = std::max(32, source.height * 256 / source.width);
@@ -99,17 +187,19 @@ struct Camera::State {
         for (int i = 0; i < 4; ++i) recurrent[i] = result.Outputs().Lookup(outputs[i]).as<TensorFloat>();
         if (alpha.Size() != plane || fg.Size() != plane * 3)
             throw winrt::hresult_error(E_FAIL, L"Модель фона вернула неожиданный размер изображения");
+        std::vector<float> alphaValues(plane), foregroundValues(plane*3);
+        alpha.GetMany(0,alphaValues); fg.GetMany(0,foregroundValues);
         // Center-crop background, retaining its aspect ratio.
         float scale = std::max(256.f / background.width, static_cast<float>(h) / background.height);
         float cropW = 256 / scale, cropH = h / scale;
         for (int y = 0; y < h; ++y) for (int x = 0; x < 256; ++x) {
             size_t i = static_cast<size_t>(y) * 256 + x;
-            float a = std::clamp(alpha.GetAt(static_cast<uint32_t>(i)), 0.f, 1.f);
+            float a = std::clamp(alphaValues[i], 0.f, 1.f);
             int bx = std::clamp(static_cast<int>((background.width - cropW) / 2 + x / scale), 0, background.width - 1);
             int by = std::clamp(static_cast<int>((background.height - cropH) / 2 + y / scale), 0, background.height - 1);
             auto bg = background.bgra.data() + (static_cast<size_t>(by) * background.width + bx) * 4;
             for (int c = 0; c < 3; ++c) {
-                float foreground = std::clamp(fg.GetAt(static_cast<uint32_t>((2 - c) * plane + i)), 0.f, 1.f) * 255;
+                float foreground = std::clamp(foregroundValues[(2-c)*plane+i], 0.f, 1.f) * 255;
                 imageSmall.bgra[i * 4 + c] = static_cast<uint8_t>(foreground * a + bg[c] * (1 - a));
             }
             imageSmall.bgra[i * 4 + 3] = 255;
@@ -127,10 +217,9 @@ public:
             check(status);
             if (flags & (MF_SOURCE_READERF_ERROR | MF_SOURCE_READERF_ENDOFSTREAM))
                 throw winrt::hresult_error(E_FAIL, L"Веб-камера отключена");
-            if (flags & MF_SOURCE_READERF_CURRENTMEDIATYPECHANGED)
-                throw winrt::hresult_error(E_FAIL, L"Формат камеры изменился. Начните запись заново");
+            if (flags & MF_SOURCE_READERF_CURRENTMEDIATYPECHANGED) state->format();
             int64_t now = clock100ns();
-            if (sample && now - state->processedAt >= 1000000) {
+            if (sample && now - state->processedAt >= 300000) {
                 ComPtr<IMFMediaBuffer> buffer; check(sample->ConvertToContiguousBuffer(&buffer));
                 Image image{state->width, state->height, std::vector<uint8_t>(static_cast<size_t>(state->width) * state->height * 4)};
                 ComPtr<IMF2DBuffer> twoD;
@@ -151,11 +240,11 @@ public:
                             top + static_cast<ptrdiff_t>(y) * state->stride, state->width * 4);
                     check(buffer->Unlock());
                 }
-                if (state->replace) image = state->matting(image);
                 image.time100ns = now;
                 {
                     std::lock_guard lock(state->mutex);
-                    state->image = std::move(image); state->timestamp = clock100ns();
+                    state->raw = std::make_shared<Image>(std::move(image)); state->timestamp = clock100ns();
+                    state->changed.notify_all();
                 }
                 state->processedAt = now;
             }
@@ -171,18 +260,8 @@ private:
     std::weak_ptr<State> state_;
 };
 Camera::Camera(Settings const& settings) : state_(std::make_shared<State>()) {
-    state_->replace = settings.replaceBackground;
-    if (state_->replace) {
-        state_->background = loadImage(settings.backgroundPath);
-        auto path = executableDir() + L"\\models\\rvm_mobilenetv3_fp32.onnx";
-        if (!std::filesystem::exists(path))
-            throw winrt::hresult_error(HRESULT_FROM_WIN32(ERROR_FILE_NOT_FOUND), L"Модель замены фона не установлена. Запустите scripts/setup-background.ps1");
-        auto model = LearningModel::LoadFromFilePath(path);
-        // CPU mode keeps the optional model usable on machines without a supported GPU.
-        state_->session = LearningModelSession(model, LearningModelDevice(LearningModelDeviceKind::Cpu));
-        for (auto& recurrent : state_->recurrent)
-            recurrent = TensorFloat::CreateFromArray({1, 1, 1, 1}, std::array<float, 1>{0.f});
-    }
+    state_->live = settings.live;
+    state_->customPath = settings.backgroundPath;
     ComPtr<IMFAttributes> sourceAttributes; check(MFCreateAttributes(&sourceAttributes, 2));
     check(sourceAttributes->SetGUID(MF_DEVSOURCE_ATTRIBUTE_SOURCE_TYPE, MF_DEVSOURCE_ATTRIBUTE_SOURCE_TYPE_VIDCAP_GUID));
     check(sourceAttributes->SetString(MF_DEVSOURCE_ATTRIBUTE_SOURCE_TYPE_VIDCAP_SYMBOLIC_LINK, settings.cameraId.c_str()));
@@ -201,7 +280,9 @@ Camera::Camera(Settings const& settings) : state_(std::make_shared<State>()) {
         ComPtr<IMFMediaType> type;
         if (FAILED(reader_->GetNativeMediaType(MF_SOURCE_READER_FIRST_VIDEO_STREAM, i, &type))) break;
         UINT32 w{}, h{}; if (FAILED(MFGetAttributeSize(type.Get(), MF_MT_FRAME_SIZE, &w, &h))) continue;
-        auto candidate = static_cast<uint64_t>(std::abs(static_cast<int>(w) - 640)) + std::abs(static_cast<int>(h) - 480);
+        UINT32 numerator{}, denominator{}; MFGetAttributeRatio(type.Get(), MF_MT_FRAME_RATE, &numerator, &denominator);
+        double fps = denominator ? double(numerator)/denominator : 0;
+        auto candidate = static_cast<uint64_t>(std::abs(static_cast<int>(w)-640)+std::abs(static_cast<int>(h)-480) + std::abs(fps-30)*100);
         if (candidate < score) { chosen = type; score = candidate; }
     }
     if (chosen) check(reader_->SetCurrentMediaType(MF_SOURCE_READER_FIRST_VIDEO_STREAM, nullptr, chosen.Get()));
@@ -219,22 +300,34 @@ Camera::Camera(Settings const& settings) : state_(std::make_shared<State>()) {
     state_->stride = static_cast<LONG>(stride);
     state_->timestamp = clock100ns();
     state_->reader = reader_;
+    state_->processor = std::thread([state=state_]{state->process();});
     check(reader_->ReadSample(MF_SOURCE_READER_FIRST_VIDEO_STREAM, 0, nullptr, nullptr, nullptr, nullptr));
 }
 Camera::~Camera() {
-    state_->stopped = true;
+    state_->stopped = true; state_->changed.notify_all();
     // The callback holds only a weak state pointer; there is no reader/callback ownership cycle.
     { std::lock_guard lock(state_->mutex); state_->reader.Reset(); }
     if (reader_) reader_->Flush(MF_SOURCE_READER_ALL_STREAMS);
     if (source_) source_->Shutdown();
+    if(state_->processor.joinable()) state_->processor.join();
 }
-Image Camera::latest() {
+Image Camera::latest() { auto value=latestFrame(); return value ? *value : Image{}; }
+std::shared_ptr<Image const> Camera::latestFrame() {
     std::lock_guard lock(state_->mutex);
-    if (!state_->error.empty()) throw winrt::hresult_error(E_FAIL, state_->error);
-    if (clock100ns() - state_->timestamp > 50000000)
-        throw winrt::hresult_error(E_FAIL, L"Камера не передает кадры более пяти секунд");
-    return state_->image;
+    if (!state_->error.empty()) throw winrt::hresult_error(E_FAIL,state_->error);
+    if(clock100ns()-state_->timestamp>100000000) throw winrt::hresult_error(E_FAIL,L"Камера не передает кадры. Проверьте доступ к камере в настройках Windows");
+    return state_->published;
 }
+bool Camera::waitForFirstFrame(std::atomic_bool const& stop,int timeoutMs) {
+    auto deadline=clock100ns()+int64_t(timeoutMs)*10000;
+    while(!stop) {
+        if(auto frame=latestFrame(); frame && !frame->empty()) return true;
+        if(clock100ns()>deadline) throw winrt::hresult_error(E_FAIL,L"Камера не передала первый кадр. Проверьте разрешение доступа и закройте другие приложения камеры");
+        std::unique_lock lock(state_->mutex); state_->changed.wait_for(lock,std::chrono::milliseconds(20));
+    }
+    return false;
+}
+std::wstring Camera::diagnostics() { std::lock_guard lock(state_->mutex); return std::to_wstring(state_->width)+L"x"+std::to_wstring(state_->height); }
 void Camera::testModel() {
     State state;
     auto model = LearningModel::LoadFromFilePath(executableDir() + L"\\models\\rvm_mobilenetv3_fp32.onnx");

@@ -18,6 +18,8 @@
 #include <string>
 #include <thread>
 #include <vector>
+#include <condition_variable>
+#include <deque>
 
 using Microsoft::WRL::ComPtr;
 inline void check(HRESULT hr) { winrt::check_hresult(hr); }
@@ -58,6 +60,14 @@ struct Target {
 };
 struct Device { std::wstring name, id; };
 enum class AudioMode { Off, System, Process };
+enum class BackgroundMode { Original, Blur, Solid, Gradient, Interior, Custom };
+struct LiveSettings {
+    std::atomic<float> systemGain{1.f}, micGain{1.f}, noiseStrength{.65f};
+    std::atomic_bool denoise{};
+    std::atomic<float> cameraX{1.f}, cameraY{1.f};
+    std::atomic<BackgroundMode> background{BackgroundMode::Original};
+    std::atomic<int> backgroundPreset{}, blurStrength{16};
+};
 struct Settings {
     Target target;
     AudioMode audio{AudioMode::System};
@@ -68,4 +78,5 @@ struct Settings {
     int corner{3};
     int fps{30};
     std::wstring path;
+    std::shared_ptr<LiveSettings> live{std::make_shared<LiveSettings>()};
 };

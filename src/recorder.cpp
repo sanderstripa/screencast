@@ -2,6 +2,7 @@
 #include "capture.h"
 #include "audio.h"
 #include "camera.h"
+#include "spectral.h"
 #include <avrt.h>
 #include <deque>
 
@@ -120,7 +121,7 @@ void Recorder::stop() { stop_ = true; }
 void Recorder::join() { if (worker_.joinable()) worker_.join(); }
 void Recorder::start(Settings settings, HWND notify) {
     if (busy_) return;
-    join(); stop_ = false; epoch_ = 0; busy_ = true;
+    join(); stop_ = false; epoch_ = 0; busy_ = true; preview_=nullptr;
     worker_ = std::thread([this, settings = std::move(settings), notify] {
         auto result = std::make_unique<RecordingResult>();
         std::unique_ptr<Writer> writer;
@@ -148,6 +149,7 @@ void Recorder::start(Settings settings, HWND notify) {
             if (settings.mic) mic = std::make_unique<AudioCapture>(true, AudioMode::Off, settings.micId, 0);
             std::unique_ptr<Camera> camera;
             if (settings.camera) camera = std::make_unique<Camera>(settings);
+            if(camera && !camera->waitForFirstFrame(stop_)) { result->cancelled=true; throw winrt::hresult_error(E_ABORT,L"Запуск отменен"); }
             Image image;
             auto deadline = clock100ns() + 50000000;
             while (!stop_ && !capture.next(image)) {
@@ -162,10 +164,15 @@ void Recorder::start(Settings settings, HWND notify) {
             if (system) system->start(epoch); if (mic) mic->start(epoch);
             recording_ = true;
             int64_t videoFrame{}, audioFrame{}, nextDiskCheck{}, stopAt{};
-            std::deque<Image> videoQueue, cameraQueue;
-            Image cameraImage;
+            std::deque<Image> videoQueue;
+            std::deque<std::shared_ptr<Image const>> cameraQueue;
+            auto cameraImage=camera?camera->latestFrame():nullptr;
+            SmoothMotion movement({settings.live->cameraX,settings.live->cameraY});
+            int64_t nextCapture{};
             int64_t lastCameraTimestamp{};
-            dsp::NoiseSuppressor suppressor;
+            dsp::SpectralDenoiser suppressor;
+            std::vector<float> cleanMic;
+            float systemGain=settings.live->systemGain,micGain=settings.live->micGain;
             std::vector<int16_t> pcm;
             // Delay output by 150 ms so audio packets arrive before their timeline is mixed.
             constexpr int64_t latency = 1500000;
@@ -175,11 +182,16 @@ void Recorder::start(Settings settings, HWND notify) {
                 if (system) system->poll(); if (mic) mic->poll();
                 if (process.value && WaitForSingleObject(process.value, 0) == WAIT_OBJECT_0)
                     throw winrt::hresult_error(E_ABORT, L"Приложение, звук которого записывался, завершилось");
-                Image fresh; if (capture.next(fresh)) videoQueue.push_back(std::move(fresh));
+                if(now>=nextCapture) {
+                    Image fresh; if (capture.next(fresh)) videoQueue.push_back(std::move(fresh));
+                    nextCapture=now+10000000/settings.fps;
+                    while(videoQueue.size()>16) videoQueue.pop_front();
+                }
                 if (camera) {
-                    auto value = camera->latest();
-                    if (!value.empty() && value.time100ns > lastCameraTimestamp) {
-                        lastCameraTimestamp = value.time100ns; cameraQueue.push_back(std::move(value));
+                    auto value = camera->latestFrame();
+                    if (value && value->time100ns > lastCameraTimestamp) {
+                        lastCameraTimestamp = value->time100ns; cameraQueue.push_back(std::move(value));
+                        while(cameraQueue.size()>16) cameraQueue.pop_front();
                     }
                 }
                 int64_t ready = std::min(now - latency, stopAt ? stopAt : now);
@@ -188,11 +200,14 @@ void Recorder::start(Settings settings, HWND notify) {
                     while (!videoQueue.empty() && videoQueue.front().time100ns <= due) {
                         image = std::move(videoQueue.front()); videoQueue.pop_front();
                     }
-                    while (!cameraQueue.empty() && cameraQueue.front().time100ns <= due) {
+                    while (!cameraQueue.empty() && cameraQueue.front()->time100ns <= due) {
                         cameraImage = std::move(cameraQueue.front()); cameraQueue.pop_front();
                     }
                     Image output = image;
-                    if (camera) compositeCamera(output, cameraImage, settings.corner);
+                    auto position=movement.step({settings.live->cameraX,settings.live->cameraY},1.f/settings.fps);
+                    cameraX_=position.x; cameraY_=position.y;
+                    if (cameraImage) compositeCamera(output, *cameraImage, position);
+                    preview_=std::make_shared<Image>(resizeImage(output,480,std::max(1,output.height*480/output.width)));
                     writer->video(output, videoFrame++);
                     // Falling behind by >3 s signals overload instead of allocating an unbounded queue.
                     if (clock100ns() - epoch - videoFrame * 10000000 / settings.fps > 30000000)
@@ -201,8 +216,19 @@ void Recorder::start(Settings settings, HWND notify) {
                 if (system || mic) {
                     int64_t readyFrames = std::max<int64_t>(0, ready) * dsp::Rate / 10000000;
                     while (audioFrame + 480 <= readyFrames) {
-                        dsp::mix(system ? &system->timeline() : nullptr, mic ? &mic->timeline() : nullptr,
-                            audioFrame, 480, pcm, settings.denoise && mic ? &suppressor : nullptr);
+                        float strength=settings.live->denoise?settings.live->noiseStrength.load():0.f;
+                        if(mic) suppressor.render(mic->timeline(),audioFrame,480,strength,cleanMic);
+                        pcm.resize(960);
+                        for(int i=0;i<480;++i) {
+                            // 20 ms gain ramp prevents clicks when changing a live slider.
+                            systemGain+=(settings.live->systemGain.load()-systemGain)*.001f;
+                            micGain+=(settings.live->micGain.load()-micGain)*.001f;
+                            auto a=system?system->timeline().at(audioFrame+i):std::array<float,2>{};
+                            auto b=mic?mic->timeline().at(audioFrame+i):std::array<float,2>{};
+                            if(mic && strength>0) b={cleanMic[i],cleanMic[i]};
+                            pcm[i*2]=dsp::pcm16(a[0]*systemGain+b[0]*micGain);
+                            pcm[i*2+1]=dsp::pcm16(a[1]*systemGain+b[1]*micGain);
+                        }
                         writer->audio(pcm, audioFrame); audioFrame += 480;
                     }
                 }
@@ -264,5 +290,17 @@ int encoderSelfTest(std::wstring const& directory) {
         }
         writer.finalize();
     }
+    Writer cameraWriter(directory+L"\\synthetic-camera.mp4",640,360,30,false);
+    Image camera{128,128,std::vector<uint8_t>(128*128*4)};
+    for(size_t i=0;i<camera.bgra.size();i+=4) {camera.bgra[i]=10;camera.bgra[i+1]=20;camera.bgra[i+2]=245;camera.bgra[i+3]=255;}
+    SmoothMotion motion({0,0});
+    for(int frame=0;frame<90;++frame) {
+        Image image{640,360,std::vector<uint8_t>(640*360*4,30)};
+        auto p=motion.step(frame<15?Point{0,0}:Point{1,1},1.f/30);
+        compositeCamera(image,camera,p);cameraWriter.video(image,frame);
+    }
+    cameraWriter.finalize();
+    auto blurred=blurImage(camera,12);
+    if(blurred.bgra!=camera.bgra) throw winrt::hresult_error(E_FAIL,L"Размытие изменило однотонное изображение");
     return 0;
 }

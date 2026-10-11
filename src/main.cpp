@@ -9,15 +9,18 @@
 #include <wincodec.h>
 #include <map>
 #include <fstream>
+#include <commctrl.h>
+#include <windowsx.h>
 
 int encoderSelfTest(std::wstring const& directory);
 namespace {
 enum Id { SourceKind = 100, Source, Refresh, OutputMode, OutputDevice, Microphone, MicDevice,
-    Denoise, Webcam, CameraDevice, Corner, Background, BackgroundFile, Save, Start, ThemeSystem, ThemeLight, ThemeDark };
-enum class Kind { Button, Choice, Toggle, Segment };
+    Denoise, Webcam, CameraDevice, Corner, Background, BackgroundFile, Save, Start, ThemeSystem, ThemeLight, ThemeDark,
+    SystemVolume,MicVolume,NoiseStrength,BlurStrength,BackgroundPreset };
+enum class Kind { Button, Choice, Toggle, Segment, Slider };
 struct Control {
     HWND window{}; Kind kind{}; std::wstring label;
-    std::vector<std::wstring> items; int selected{}; bool checked{};
+    std::vector<std::wstring> items; int selected{}; bool checked{}; int maximum{100};
 };
 struct Palette { COLORREF background, text, muted, line, hover, active, buttonText; };
 class App {
@@ -35,11 +38,57 @@ public:
     std::wstring path, backgroundPath, lastFile, status{L"Готов к записи"};
     std::wstring snapshotPath;
     Palette palette{};
+    std::shared_ptr<LiveSettings> live=std::make_shared<LiveSettings>();
+    bool dragging{}; Point dragOffset{};
+    RECT previewRect{};
+    std::shared_ptr<Image const> displayed;
+    static LRESULT CALLBACK sliderProcedure(HWND hwnd,UINT message,WPARAM wp,LPARAM lp,UINT_PTR,DWORD_PTR data) {
+        auto self=reinterpret_cast<App*>(data); int id=GetDlgCtrlID(hwnd); auto& c=self->controls.at(id);
+        if(message==WM_LBUTTONDOWN || (message==WM_MOUSEMOVE && GetCapture()==hwnd)) {
+            if(message==WM_LBUTTONDOWN) {SetCapture(hwnd);SetFocus(hwnd);}
+            RECT r{};GetClientRect(hwnd,&r); int inset=self->px(14);
+            c.selected=std::clamp(MulDiv(GET_X_LPARAM(lp)-inset,c.maximum,std::max(1,int(r.right)-2*inset)),0,c.maximum);
+            self->updateText(id);self->updateLive();return 0;
+        }
+        if(message==WM_LBUTTONUP) {if(GetCapture()==hwnd)ReleaseCapture();return 0;}
+        if(message==WM_KEYDOWN && (wp==VK_LEFT || wp==VK_RIGHT || wp==VK_HOME || wp==VK_END)) {
+            c.selected=wp==VK_HOME?0:wp==VK_END?c.maximum:std::clamp(c.selected+(wp==VK_RIGHT?5:-5),0,c.maximum);
+            self->updateText(id);self->updateLive();return 0;
+        }
+        if(message==WM_NCDESTROY) RemoveWindowSubclass(hwnd,sliderProcedure,1);
+        return DefSubclassProc(hwnd,message,wp,lp);
+    }
+    void updateLive() {
+        live->systemGain=controls[SystemVolume].selected/100.f; live->micGain=controls[MicVolume].selected/100.f;
+        live->noiseStrength=controls[NoiseStrength].selected/100.f;live->denoise=controls[Denoise].checked;
+        live->background=static_cast<BackgroundMode>(controls[Background].selected);
+        live->backgroundPreset=controls[BackgroundPreset].selected;live->blurStrength=std::max(1,controls[BlurStrength].selected*40/100);
+    }
+    void backgroundItems() {
+        int mode=controls[Background].selected;
+        if(mode==4) setItems(BackgroundPreset,{L"Молочная гостиная",L"Бежевый уголок",L"Светло-серый интерьер"});
+        else setItems(BackgroundPreset,{L"Графитовый",L"Молочный",L"Светло-серый",L"Тёплый бежевый"});
+    }
+    void dragCamera(int x,int y,bool begin) {
+        if(!recorder.recording() || !controls[Webcam].checked || !displayed) return;
+        float scale=float(previewRect.right-previewRect.left)/displayed->width;
+        auto p=circlePlacement(displayed->width,displayed->height,recorder.cameraPosition());
+        float cx=previewRect.left+(p.left+p.diameter*.5f)*scale, cy=previewRect.top+(p.top+p.diameter*.5f)*scale;
+        if(begin) {
+            if(std::hypot(x-cx,y-cy)>p.diameter*.5f*scale) return;
+            dragging=true;dragOffset={x-cx,y-cy};SetCapture(window);
+        }
+        if(!dragging) return;
+        float ix=(x-dragOffset.x-previewRect.left)/scale-p.diameter*.5f;
+        float iy=(y-dragOffset.y-previewRect.top)/scale-p.diameter*.5f;
+        live->cameraX=std::clamp((ix-p.margin)/std::max(1,displayed->width-p.diameter-2*p.margin),0.f,1.f);
+        live->cameraY=std::clamp((iy-p.margin)/std::max(1,displayed->height-p.diameter-2*p.margin),0.f,1.f);
+    }
 
     int px(int value) const { return MulDiv(value, dpi, 96); }
     void scrollTo(int position) {
         RECT r{}; GetClientRect(window, &r);
-        position = std::clamp(position, 0, std::max(0, px(848) - static_cast<int>(r.bottom)));
+        position = std::clamp(position, 0, std::max(0, px(1400) - static_cast<int>(r.bottom)));
         int delta = scroll - position; scroll = position;
         SetScrollPos(window, SB_VERT, scroll, TRUE);
         ScrollWindowEx(window, 0, delta, nullptr, nullptr, nullptr, nullptr, SW_SCROLLCHILDREN | SW_INVALIDATE | SW_ERASE);
@@ -48,7 +97,7 @@ public:
     void scrollRange() {
         RECT r{}; GetClientRect(window, &r);
         SCROLLINFO info{sizeof(info), SIF_RANGE | SIF_PAGE | SIF_POS};
-        info.nMax = px(848) - 1; info.nPage = r.bottom; info.nPos = scroll;
+        info.nMax = px(1400) - 1; info.nPage = r.bottom; info.nPos = scroll;
         SetScrollInfo(window, SB_VERT, &info, TRUE);
     }
     void reveal(int id) {
@@ -83,6 +132,7 @@ public:
         auto hwnd = CreateWindowExW(0, L"BUTTON", label.c_str(), WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_OWNERDRAW | BS_NOTIFY,
             px(x), px(y), px(w), px(h), window, reinterpret_cast<HMENU>(static_cast<INT_PTR>(id)), GetModuleHandleW(nullptr), nullptr);
         controls[id] = {hwnd, kind, label};
+        if(kind==Kind::Slider) SetWindowSubclass(hwnd,sliderProcedure,1,reinterpret_cast<DWORD_PTR>(this));
     }
     void setItems(int id, std::vector<std::wstring> items) {
         auto& c = controls.at(id); c.items = std::move(items);
@@ -94,6 +144,7 @@ public:
         auto text = c.label;
         if (c.kind == Kind::Choice) text = c.items.empty() ? L"Нет доступных устройств" : c.items[c.selected];
         else if (c.kind == Kind::Toggle) text += c.checked ? L": включено" : L": выключено";
+        else if(c.kind==Kind::Slider) text+=L" · "+std::to_wstring(c.selected)+L"%";
         SetWindowTextW(c.window, text.c_str()); InvalidateRect(c.window, nullptr, TRUE);
     }
     void setChecked(int id, bool value) { controls.at(id).checked = value; updateText(id); }
@@ -163,12 +214,16 @@ public:
     void enabled() {
         bool idle = !recorder.busy() && !finishing;
         for (auto& [id, control] : controls) {
-            if (id == Start || id >= ThemeSystem) continue;
-            bool enable = idle;
-            if (id == MicDevice || id == Denoise) enable &= controls[Microphone].checked;
+            if (id == Start || (id >= ThemeSystem && id <= ThemeDark)) continue;
+            bool enable = idle || id==SystemVolume || id==MicVolume || id==NoiseStrength || id==Denoise || id==Corner || id==Background || id==BackgroundPreset || id==BlurStrength;
+            if (id == MicDevice || id == Denoise || id==MicVolume || id==NoiseStrength) enable &= controls[Microphone].checked;
+            if(id==NoiseStrength) enable &= controls[Denoise].checked;
+            if(id==SystemVolume) enable &= controls[OutputMode].selected!=0;
             if (id == OutputDevice) enable &= controls[OutputMode].selected != 0;
             if (id == CameraDevice || id == Corner || id == Background) enable &= controls[Webcam].checked && !cameras.empty();
-            if (id == BackgroundFile) enable &= controls[Webcam].checked && controls[Background].checked;
+            if (id == BackgroundFile) enable &= controls[Webcam].checked && controls[Background].selected==5;
+            if(id==BackgroundPreset) enable &= controls[Webcam].checked && controls[Background].selected>=2 && controls[Background].selected<=4;
+            if(id==BlurStrength) enable &= controls[Webcam].checked && controls[Background].selected==1;
             EnableWindow(control.window, enable);
         }
         EnableWindow(controls[Start].window, !finishing);
@@ -188,25 +243,32 @@ public:
         setItems(OutputMode, {L"Звук выключен", L"Системный звук", L"Звук выбранного приложения / процесса"});
         controls[OutputMode].selected = 1; updateText(OutputMode);
         add(OutputDevice, Kind::Choice, L"Устройство системного звука", 30, 350, 480, 34);
-        add(Microphone, Kind::Toggle, L"Микрофон", 30, 394, 480, 30); setChecked(Microphone, true);
-        add(MicDevice, Kind::Choice, L"Устройство микрофона", 30, 434, 480, 34);
-        add(Denoise, Kind::Toggle, L"Программное шумоподавление", 30, 478, 480, 30);
-        add(Webcam, Kind::Toggle, L"Круглая веб-камера", 30, 572, 480, 30);
-        add(CameraDevice, Kind::Choice, L"Камера", 30, 610, 295, 34);
-        add(Corner, Kind::Choice, L"Угол камеры", 335, 610, 175, 34);
+        add(Microphone, Kind::Toggle, L"Микрофон", 30, 458, 480, 30); setChecked(Microphone, true);
+        add(MicDevice, Kind::Choice, L"Устройство микрофона", 30, 498, 480, 34);
+        add(Denoise, Kind::Toggle, L"Программное шумоподавление", 30, 606, 480, 30);
+        add(Webcam, Kind::Toggle, L"Круглая веб-камера", 30, 756, 480, 30);
+        add(CameraDevice, Kind::Choice, L"Камера", 30, 794, 295, 34);
+        add(Corner, Kind::Choice, L"Угол камеры", 335, 794, 175, 34);
         setItems(Corner, {L"Слева сверху", L"Справа сверху", L"Слева снизу", L"Справа снизу"});
         controls[Corner].selected = 3; updateText(Corner);
-        add(Background, Kind::Toggle, L"Заменить фон изображением", 30, 654, 480, 30);
-        add(BackgroundFile, Kind::Button, L"Выбрать изображение…", 30, 692, 480, 34);
-        add(Save, Kind::Button, L"Куда сохранить MP4…", 30, 784, 235, 38);
-        add(Start, Kind::Button, L"Начать запись", 275, 784, 235, 38);
-        RECT client{0,0,px(540),px(848)};
+        add(Background, Kind::Choice, L"Фон камеры", 30, 838, 480, 34);
+        setItems(Background,{L"Реальный фон",L"Размыть реальный фон",L"Однотонный фон",L"Спокойный градиент",L"Нейтральный интерьер",L"Своё изображение"});
+        add(BackgroundPreset,Kind::Choice,L"Вариант фона",30,882,480,34); backgroundItems();
+        add(BlurStrength,Kind::Slider,L"Размытие",30,926,480,54); controls[BlurStrength].selected=40;
+        add(SystemVolume,Kind::Slider,L"Громкость системного звука",30,394,480,54);
+        add(MicVolume,Kind::Slider,L"Громкость микрофона",30,542,480,54);
+        for(int id:{SystemVolume,MicVolume}) { controls[id].maximum=200; controls[id].selected=100; updateText(id); }
+        add(NoiseStrength,Kind::Slider,L"Интенсивность шумоподавления",30,644,480,54); controls[NoiseStrength].selected=65; updateText(NoiseStrength);
+        add(BackgroundFile, Kind::Button, L"Выбрать изображение…", 30, 990, 480, 34);
+        add(Save, Kind::Button, L"Куда сохранить MP4…", 30, 1340, 235, 38);
+        add(Start, Kind::Button, L"Начать запись", 275, 1340, 235, 38);
+        RECT client{0,0,px(540),px(1400)};
         MONITORINFO info{sizeof(info)}; GetMonitorInfoW(MonitorFromWindow(window, MONITOR_DEFAULTTONEAREST), &info);
         client.bottom = std::min(client.bottom, info.rcWork.bottom - info.rcWork.top - px(60));
         AdjustWindowRectExForDpi(&client, WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX | WS_VSCROLL, FALSE, 0, dpi);
         SetWindowPos(window, nullptr, 0, 0, client.right-client.left, client.bottom-client.top, SWP_NOMOVE | SWP_NOZORDER);
         scrollRange();
-        refresh(); applyTheme(); SetTimer(window, 1, 250, nullptr);
+        refresh(); applyTheme(); SetTimer(window, 1, 33, nullptr);
     }
     void text(HDC dc, std::wstring const& value, int x, int y, int w, int h, HFONT face, COLORREF color, UINT flags = DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS) {
         RECT r{px(x),px(y)-scroll,px(x+w),px(y+h)-scroll};
@@ -229,17 +291,29 @@ public:
         line(dc, 128); spaced(dc, L"ИСТОЧНИК ВИДЕО", 144, heading, 1);
         line(dc, 268); spaced(dc, L"ЗВУК", 284, heading, 1);
         text(dc, controls[OutputMode].selected == 2 ? L"Записывается выбранный процесс и его дочерние процессы." :
-            L"Микрофон и выходной звук включаются независимо.", 30, 510, 480, 18, smallFont, palette.muted);
-        line(dc, 540); spaced(dc, L"КАМЕРА И ФОН", 550, heading, 1);
-        text(dc, L"Для замены фона нужна дополнительная модель (отдельная загрузка).", 30, 730, 480, 18, smallFont, palette.muted);
-        line(dc, 756);
+            L"Микрофон и выходной звук включаются независимо.", 30, 704, 480, 18, smallFont, palette.muted);
+        line(dc, 732); spaced(dc, L"КАМЕРА И ФОН", 734, heading, 1);
+        text(dc, L"Для эффектов фона установите модель: scripts/setup-background.ps1", 30, 1030, 480, 18, smallFont, palette.muted);
+        line(dc, 1304);
         auto label = status;
         if (recorder.recording()) {
             auto t = recorder.elapsed(); wchar_t duration[64]{};
             swprintf_s(duration, L"Запись · %02lld:%02lld:%02lld", t / 3600, t / 60 % 60, t % 60);
             label = duration;
         }
-        text(dc, label, 30, 759, 480, 22, smallFont, palette.muted);
+        text(dc, label, 30, 1308, 480, 22, smallFont, palette.muted);
+        displayed=recorder.preview();
+        RECT area{px(30),px(1064)-scroll,px(510),px(1284)-scroll}; FillRect(dc,&area,brush);
+        if(displayed && !displayed->empty()) {
+            float scale=std::min(float(area.right-area.left)/displayed->width,float(area.bottom-area.top)/displayed->height);
+            int w=int(displayed->width*scale),h=int(displayed->height*scale);
+            int x=area.left+(area.right-area.left-w)/2,y=area.top+(area.bottom-area.top-h)/2;
+            previewRect={x,y,x+w,y+h};
+            BITMAPINFO bitmap{};bitmap.bmiHeader.biSize=sizeof(BITMAPINFOHEADER);bitmap.bmiHeader.biWidth=displayed->width;
+            bitmap.bmiHeader.biHeight=-displayed->height;bitmap.bmiHeader.biPlanes=1;bitmap.bmiHeader.biBitCount=32;
+            SetStretchBltMode(dc,COLORONCOLOR);
+            StretchDIBits(dc,x,y,w,h,0,0,displayed->width,displayed->height,displayed->bgra.data(),&bitmap,DIB_RGB_COLORS,SRCCOPY);
+        } else text(dc,L"Во время записи перетащите кружок камеры здесь",30,1150,480,40,smallFont,palette.muted,DT_CENTER|DT_WORDBREAK);
     }
     void draw(DRAWITEMSTRUCT const& item) {
         auto found = controls.find(static_cast<int>(item.CtlID)); if (found == controls.end()) return;
@@ -247,6 +321,17 @@ public:
         bool disabled = item.itemState & ODS_DISABLED, pressed = item.itemState & ODS_SELECTED;
         COLORREF color = disabled ? palette.muted : palette.text;
         FillRect(dc, &r, brush);
+        if(control.kind==Kind::Slider) {
+            SelectObject(dc,smallFont);SetBkMode(dc,TRANSPARENT);SetTextColor(dc,color);
+            auto label=control.label+L" · "+std::to_wstring(control.selected)+L"%";
+            RECT labelRect{px(14),0,r.right-px(14),px(24)};DrawTextW(dc,label.c_str(),-1,&labelRect,DT_LEFT|DT_VCENTER|DT_SINGLELINE);
+            int left=px(14),right=r.right-px(14),y=px(38),x=left+MulDiv(right-left,control.selected,control.maximum);
+            auto pen=CreatePen(PS_SOLID,px(2),palette.line);auto before=SelectObject(dc,pen);
+            MoveToEx(dc,left,y,nullptr);LineTo(dc,right,y);SelectObject(dc,before);DeleteObject(pen);
+            pen=CreatePen(PS_SOLID,px(3),color);before=SelectObject(dc,pen);MoveToEx(dc,left,y,nullptr);LineTo(dc,x,y);
+            auto fill=CreateSolidBrush(color);auto old=SelectObject(dc,fill);Ellipse(dc,x-px(5),y-px(5),x+px(5),y+px(5));
+            SelectObject(dc,old);SelectObject(dc,before);DeleteObject(fill);DeleteObject(pen);return;
+        }
         auto label = control.label;
         bool selectedTheme = item.CtlID >= ThemeSystem && static_cast<int>(item.CtlID) - ThemeSystem == theme;
         if (control.kind == Kind::Choice) label = control.items.empty() ? L"Нет доступных устройств" : control.items[control.selected];
@@ -314,7 +399,9 @@ public:
             settings.cameraId = cameras.at(controls[CameraDevice].selected).id;
         }
         settings.corner = controls[Corner].selected;
-        settings.replaceBackground = settings.camera && controls[Background].checked;
+        updateLive(); settings.live=live;
+        live->cameraX=float(settings.corner%2); live->cameraY=float(settings.corner/2);
+        settings.replaceBackground = settings.camera && controls[Background].selected==5;
         settings.backgroundPath = backgroundPath;
         if (settings.replaceBackground && backgroundPath.empty()) throw winrt::hresult_error(E_INVALIDARG, L"Выберите изображение фона");
         if (path.empty()) path = choose(true, L"Видео MP4\0*.mp4\0\0");
@@ -341,9 +428,12 @@ public:
                 control.selected = picked - 1; updateText(id);
                 if (id == SourceKind) sourceItems();
                 if (id == OutputMode) outputItems();
+                if(id==Background) backgroundItems();
+                if(id==Corner) { live->cameraX=float(control.selected%2); live->cameraY=float(control.selected/2); }
+                updateLive();
             }
             enabled();
-        } else if (control.kind == Kind::Toggle) { setChecked(id, !control.checked); enabled(); }
+        } else if (control.kind == Kind::Toggle) { setChecked(id, !control.checked); updateLive(); enabled(); }
         else if (id == Refresh) refresh();
         else if (id == BackgroundFile) {
             auto value = choose(false, L"Изображения\0*.png;*.jpg;*.jpeg;*.bmp\0\0");
@@ -424,6 +514,10 @@ LRESULT CALLBACK procedure(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam
             app->scrollTo(position); return 0;
         }
         case WM_MOUSEWHEEL: app->scrollTo(app->scroll - GET_WHEEL_DELTA_WPARAM(wParam) * app->px(60) / WHEEL_DELTA); return 0;
+        case WM_LBUTTONDOWN: app->dragCamera(GET_X_LPARAM(lParam),GET_Y_LPARAM(lParam),true);return 0;
+        case WM_MOUSEMOVE: if(app->dragging) app->dragCamera(GET_X_LPARAM(lParam),GET_Y_LPARAM(lParam),false);return 0;
+        case WM_LBUTTONUP: if(app->dragging) {app->dragging=false;ReleaseCapture();}return 0;
+        case WM_CAPTURECHANGED: app->dragging=false;return 0;
         case WM_DRAWITEM: app->draw(*reinterpret_cast<DRAWITEMSTRUCT*>(lParam)); return TRUE;
         case WM_PAINT: { PAINTSTRUCT ps{}; auto dc = BeginPaint(hwnd, &ps); app->paint(dc); EndPaint(hwnd, &ps); return 0; }
         case WM_ERASEBKGND: return 1;
@@ -439,7 +533,7 @@ LRESULT CALLBACK procedure(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam
             auto r = reinterpret_cast<RECT*>(lParam); SetWindowPos(hwnd, nullptr, r->left,r->top,r->right-r->left,r->bottom-r->top,SWP_NOZORDER); app->scrollRange(); return 0;
         }
         case WM_TIMER:
-            { RECT r{app->px(30), app->px(759)-app->scroll, app->px(510), app->px(781)-app->scroll}; InvalidateRect(hwnd, &r, FALSE); }
+            { RECT r{app->px(30), app->px(1060)-app->scroll, app->px(510), app->px(1332)-app->scroll}; InvalidateRect(hwnd, &r, FALSE); }
             if (wParam == 2) { KillTimer(hwnd, 2); app->snapshot(); DestroyWindow(hwnd); }
             return 0;
         case WM_RECORD_STATUS: {
