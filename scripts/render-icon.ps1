@@ -22,9 +22,25 @@ $p=[Drawing.Drawing2D.GraphicsPath]::new();$p.AddLine(592,481,639,453);$p.AddBez
 $g.Dispose();$master.Save((Join-Path $Destination 'Screencast-2048.png'),[Drawing.Imaging.ImageFormat]::Png)
 $images=@();foreach($size in @(16,20,24,32,40,48,64,96,128,256)) {
  $bitmap=[Drawing.Bitmap]::new($size,$size);$draw=[Drawing.Graphics]::FromImage($bitmap);$draw.InterpolationMode='HighQualityBicubic';$draw.PixelOffsetMode='HighQuality';$draw.DrawImage($master,0,0,$size,$size);$draw.Dispose()
- $memory=[IO.MemoryStream]::new();$bitmap.Save($memory,[Drawing.Imaging.ImageFormat]::Png);$images+=,@{Size=$size;Bytes=$memory.ToArray()};$bitmap.Dispose();$memory.Dispose()
+ $memory=[IO.MemoryStream]::new()
+ if($size-eq256){$bitmap.Save($memory,[Drawing.Imaging.ImageFormat]::Png)}else{
+  # Classic 32-bit DIB entries are reliably extracted by shell/shortcut paths.
+  # Keep the large entry PNG-compressed. All pixels come from the same master.
+  $writer=[IO.BinaryWriter]::new($memory,[Text.Encoding]::UTF8,$true)
+  $writer.Write([uint32]40);$writer.Write([int32]$size);$writer.Write([int32]($size*2));$writer.Write([uint16]1);$writer.Write([uint16]32)
+  $maskStride=[int]([Math]::Ceiling($size/32.0)*4)
+  $writer.Write([uint32]0);$writer.Write([uint32]($size*$size*4+$maskStride*$size));foreach($field in 1..4){$writer.Write([uint32]0)}
+  $pixels=$bitmap.LockBits([Drawing.Rectangle]::new(0,0,$size,$size),[Drawing.Imaging.ImageLockMode]::ReadOnly,[Drawing.Imaging.PixelFormat]::Format32bppArgb)
+  $row=[byte[]]::new($size*4);$mask=[byte[]]::new($maskStride*$size)
+  for($y=$size-1;$y-ge0;$y--){[Runtime.InteropServices.Marshal]::Copy([IntPtr]::Add($pixels.Scan0,$y*$pixels.Stride),$row,0,$row.Length);$writer.Write($row)
+   for($x=0;$x-lt$size;$x++){if($row[$x*4+3]-eq0){$index=($size-1-$y)*$maskStride+[int][Math]::Floor($x/8);$mask[$index]=$mask[$index]-bor(128-shr($x%8))}}
+  }
+  $bitmap.UnlockBits($pixels);$writer.Write($mask);$writer.Dispose()
+ }
+ $images+=,@{Size=$size;Bytes=$memory.ToArray()};$bitmap.Dispose();$memory.Dispose()
 }
 $file=[IO.File]::Create((Join-Path $Destination 'Screencast.ico'));$writer=[IO.BinaryWriter]::new($file);$writer.Write([uint16]0);$writer.Write([uint16]1);$writer.Write([uint16]$images.Count)
 $offset=6+16*$images.Count
 foreach($image in $images) { $dimension=if($image.Size-eq256){0}else{$image.Size};$writer.Write([byte]$dimension);$writer.Write([byte]$dimension);$writer.Write([byte]0);$writer.Write([byte]0);$writer.Write([uint16]1);$writer.Write([uint16]32);$writer.Write([uint32]$image.Bytes.Length);$writer.Write([uint32]$offset);$offset+=$image.Bytes.Length }
 foreach($image in $images){$writer.Write([byte[]]$image.Bytes)};$writer.Dispose();$master.Dispose()
+Copy-Item (Join-Path $Destination 'Screencast.ico') (Join-Path $Destination 'Screencast-shell-0.2.5.ico') -Force

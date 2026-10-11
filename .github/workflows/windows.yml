@@ -92,6 +92,14 @@ jobs:
             if (-not $process.WaitForExit(15000) -or $process.ExitCode -ne 0) { throw 'Unchecked installer snapshot failed' }
           } }
           python tests/verify_installer.py build/smoke
+      - name: Verify shortcut icons and actual repeat launches
+        run: |
+          $directory = Join-Path $PWD 'build/smoke/shortcuts'
+          $app = (Resolve-Path build/Release/Screencast.exe).Path
+          $process = Start-Process dist/Screencast-Setup-x64.exe -ArgumentList '--shortcut-test', $directory, $app -WindowStyle Hidden -PassThru
+          if (-not $process.WaitForExit(15000) -or $process.ExitCode -ne 0) { throw 'Shortcut fixture creation failed' }
+          ./tests/verify_shell.ps1 -App $app -Setup dist/Screencast-Setup-x64.exe -Shortcuts $directory
+          Copy-Item build/Release/instance_tests.exe build/smoke/instance_tests.exe
       - uses: actions/upload-artifact@v4
         with:
           name: Screencast-Windows-x64

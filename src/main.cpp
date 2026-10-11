@@ -6,6 +6,7 @@
 #include <dwmapi.h>
 #include <commdlg.h>
 #include <shellapi.h>
+#include <shobjidl.h>
 #include <wincodec.h>
 #include <map>
 #include <fstream>
@@ -15,6 +16,7 @@
 #include "switch.h"
 #include "paint.h"
 #include "dropdown.h"
+#include "single_instance.h"
 
 int encoderSelfTest(std::wstring const& directory);
 int cameraSelfTest(std::wstring const& directory);
@@ -77,9 +79,10 @@ public:
     std::map<int,HICON> windowIcons;
     HICON windowIcon(WPARAM kind,LPARAM requestedDpi) {
         UINT scale=requestedDpi>0 && requestedDpi<=768?UINT(requestedDpi):GetDpiForWindow(window);
-        // SMALL is the caption. SMALL2 is also queried by the shell: provide a
-        // full-resolution icon rather than the former fixed 16-pixel bitmap.
-        int size=GetSystemMetricsForDpi(kind==ICON_SMALL?SM_CXSMICON:SM_CXICON,scale);
+        // Match the installer's full-size icon for EVERY shell request, including
+        // ICON_SMALL. Some taskbar paths request SMALL rather than SMALL2.
+        (void)kind;
+        int size=GetSystemMetricsForDpi(SM_CXICON,scale);
         auto& icon=windowIcons[size];
         if(!icon)icon=static_cast<HICON>(LoadImageW(GetModuleHandleW(nullptr),MAKEINTRESOURCEW(101),IMAGE_ICON,size,size,0));
         return icon;
@@ -519,8 +522,8 @@ public:
         if (RegGetValueW(HKEY_CURRENT_USER, L"Software\\Screencast", L"Theme", RRF_RT_REG_DWORD, nullptr, &value, &size) == ERROR_SUCCESS && value <= 2) theme = value;
     }
     void snapshot() {
-        for(int scale:{96,144,192}) {
-            auto icon=reinterpret_cast<HICON>(SendMessageW(window,WM_GETICON,ICON_SMALL2,scale));
+        for(int scale:{96,144,192}) for(int kind:{ICON_SMALL,ICON_SMALL2,ICON_BIG}) {
+            auto icon=reinterpret_cast<HICON>(SendMessageW(window,WM_GETICON,kind,scale));
             ICONINFO info{};check(GetIconInfo(icon,&info)?S_OK:E_FAIL);
             BITMAP bitmap{};GetObjectW(info.hbmColor,sizeof(bitmap),&bitmap);
             if(info.hbmColor)DeleteObject(info.hbmColor);if(info.hbmMask)DeleteObject(info.hbmMask);
@@ -569,6 +572,7 @@ public:
 App* app{};
 LRESULT CALLBACK procedure(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam) {
     try {
+        if(message==SingleInstance::activationMessage()){SingleInstance::activate(hwnd);return 1;}
         switch (message) {
         case WM_CREATE: app->window = hwnd; app->create(); return 0;
         case WM_GETICON:return reinterpret_cast<LRESULT>(app->windowIcon(wParam,lParam));
@@ -650,10 +654,14 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int show) {
     int result = 1; bool mf{}; ULONG_PTR gdiplus{};Gdiplus::GdiplusStartupInput graphicsStartup;Gdiplus::GdiplusStartup(&gdiplus,&graphicsStartup,nullptr);
     std::wstring diagnostics;
     try {
-        winrt::init_apartment(winrt::apartment_type::single_threaded);
-        check(MFStartup(MF_VERSION)); mf = true;
         int argc{}; auto argv = CommandLineToArgvW(GetCommandLineW(), &argc);
         std::vector<std::wstring> args; for (int i = 0; i < argc; ++i) args.emplace_back(argv[i]); LocalFree(argv);
+        std::unique_ptr<SingleInstance> instanceGuard;
+        bool diagnosticMode=args.size()>1 && (args[1]==L"--self-test" || args[1]==L"--model-test" || args[1]==L"--camera-test" || args[1]==L"--overlay-test" || args[1]==L"--live-device-test" || args[1]==L"--dropdown-test" || args[1]==L"--idle-paint-test" || args[1]==L"--snapshot-light" || args[1]==L"--snapshot-dark");
+        if(!diagnosticMode){instanceGuard=std::make_unique<SingleInstance>();if(!instanceGuard->acquire()){Gdiplus::GdiplusShutdown(gdiplus);return 0;}}
+        winrt::init_apartment(winrt::apartment_type::single_threaded);
+        if(!diagnosticMode)check(SetCurrentProcessExplicitAppUserModelID(L"SanderStripa.Screencast"));
+        check(MFStartup(MF_VERSION)); mf = true;
         if (args.size() >= 3 && (args[1] == L"--self-test" || args[1] == L"--model-test" || args[1]==L"--camera-test" || args[1]==L"--overlay-test" || args[1]==L"--live-device-test")) {
             std::filesystem::create_directories(args[2]); diagnostics = args[2] + L"\\test-error.txt";
             if (args[1] == L"--self-test") result = encoderSelfTest(args[2]);
@@ -697,7 +705,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int show) {
             state.dropdownSnapshot=args.size()>=4 && args[3]==L"dropdown";
         }
         WNDCLASSEXW cls{sizeof(cls)}; cls.lpfnWndProc = procedure; cls.hInstance = instance;
-        cls.hCursor = LoadCursorW(nullptr, IDC_ARROW); cls.hIcon = static_cast<HICON>(LoadImageW(instance,MAKEINTRESOURCEW(101),IMAGE_ICON,256,256,0));cls.hIconSm=static_cast<HICON>(LoadImageW(instance,MAKEINTRESOURCEW(101),IMAGE_ICON,32,32,0));
+        cls.hCursor=LoadCursorW(nullptr,IDC_ARROW);cls.hIcon=LoadIconW(instance,MAKEINTRESOURCEW(101));cls.hIconSm=cls.hIcon;
         cls.lpszClassName = L"ScreencastWindow"; RegisterClassExW(&cls);
         auto hwnd = CreateWindowExW(0, cls.lpszClassName, L"Screencast",
             WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX | WS_CLIPCHILDREN, CW_USEDEFAULT, CW_USEDEFAULT, 1040, 700, nullptr, nullptr, instance, nullptr);
@@ -705,6 +713,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int show) {
         SendMessageW(hwnd,WM_SETICON,ICON_BIG,reinterpret_cast<LPARAM>(state.windowIcon(ICON_BIG,0)));
         SendMessageW(hwnd,WM_SETICON,ICON_SMALL,reinterpret_cast<LPARAM>(state.windowIcon(ICON_SMALL2,0)));
         ShowWindow(hwnd, show); UpdateWindow(hwnd);
+        if(instanceGuard)instanceGuard->markReady();
         if (!state.snapshotPath.empty()) SetTimer(hwnd, 2, 1000, nullptr);
         if(!state.idleTestPath.empty())SetTimer(hwnd,3,1000,nullptr);
         MSG message{}; int value{};

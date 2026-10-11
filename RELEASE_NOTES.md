@@ -1,7 +1,8 @@
-Screencast 0.2.4 for Windows 11 x64.
+Screencast 0.2.5 for Windows 11 x64.
 
-- Replaced system dropdown menus with rounded lists using Montserrat and the app's light/dark palette. Lists support mouse selection, keyboard navigation, scrolling, and dismissal outside the list.
-- Enlarged the entire icon to fill its image bounds, preserving the original design and relative sizes of every element. Shell icon requests now receive a DPI-sized bitmap instead of the fixed 16-pixel small icon; every ICO size is generated from the same master.
-- Recording continues while a dropdown is open; existing recording and live camera/microphone controls retained.
+- Repeat launches through desktop/Start shortcuts restore the existing window instead of opening another instance. The guard also covers concurrent launches and startup/shutdown.
+- App icon requests now use the same full-size icon as the installer, including the ICON_SMALL request that still returned 16x16 in the previous release.
+- Desktop, Start menu and uninstall shortcuts share a versioned, multi-resolution icon asset. Small/medium ICO entries use native 32-bit DIB images; the 256-pixel image remains lossless PNG. Updating shortcuts also refreshes their shell icon references.
+- Original icon artwork, composition and relative proportions are unchanged.
 
 Download Screencast-Setup-x64.exe for installation or Screencast-Windows-x64.zip for portable use. Background processing uses a separately downloaded local model (about 15 MB).

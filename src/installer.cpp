@@ -10,14 +10,19 @@
 #include <set>
 #include <map>
 #include <wincodec.h>
+#include <propkey.h>
+#include <propsys.h>
 
 namespace {
 constexpr UINT Completed=WM_APP+20;
 std::wstring folder(REFKNOWNFOLDERID id) {PWSTR value{};check(SHGetKnownFolderPath(id,0,nullptr,&value));std::wstring result=value;CoTaskMemFree(value);return result;}
-void shortcut(std::wstring const& path,std::wstring const& target) {
+void shortcut(std::wstring const& path,std::wstring const& target,std::wstring const& icon,wchar_t const* appId) {
     ComPtr<IShellLinkW> link;check(CoCreateInstance(CLSID_ShellLink,nullptr,CLSCTX_INPROC_SERVER,IID_PPV_ARGS(&link)));
-    check(link->SetPath(target.c_str()));check(link->SetWorkingDirectory(std::filesystem::path(target).parent_path().c_str()));check(link->SetIconLocation(target.c_str(),0));
+    check(link->SetPath(target.c_str()));check(link->SetWorkingDirectory(std::filesystem::path(target).parent_path().c_str()));check(link->SetIconLocation(icon.c_str(),0));
+    ComPtr<IPropertyStore> properties;check(link.As(&properties));PROPVARIANT identity{};identity.vt=VT_LPWSTR;identity.pwszVal=const_cast<wchar_t*>(appId);
+    check(properties->SetValue(PKEY_AppUserModel_ID,identity));check(properties->Commit());
     ComPtr<IPersistFile> persist;check(link.As(&persist));check(persist->Save(path.c_str(),TRUE));
+    SHChangeNotify(SHCNE_UPDATEITEM,SHCNF_PATHW,path.c_str(),nullptr);
 }
 std::wstring quotedPS(std::wstring text) {size_t position{};while((position=text.find(L"'",position))!=std::wstring::npos){text.insert(position,L"'");position+=2;}return L"'"+text+L"'";}
 void runHidden(std::wstring arguments) {
@@ -168,12 +173,13 @@ public:
             try {
                 winrt::init_apartment();extract(destination);progress=75;
                 wchar_t self[32768]{};GetModuleFileNameW(nullptr,self,32768);std::filesystem::copy_file(self,destination/L"Screencast-Uninstall.exe",std::filesystem::copy_options::overwrite_existing);
-                auto app=(destination/L"Screencast.exe").wstring();if(desktop)shortcut(folder(FOLDERID_Desktop)+L"\\Screencast.lnk",app);
+                auto app=(destination/L"Screencast.exe").wstring();auto icon=(destination/L"assets/Screencast-shell-0.2.5.ico").wstring();
+                if(desktop)shortcut(folder(FOLDERID_Desktop)+L"\\Screencast.lnk",app,icon,L"SanderStripa.Screencast");
                 SHChangeNotify(SHCNE_UPDATEITEM,SHCNF_PATHW,app.c_str(),nullptr);
-                if(startMenu) {auto group=std::filesystem::path(folder(FOLDERID_Programs))/L"Screencast";std::filesystem::create_directories(group);shortcut((group/L"Screencast.lnk").wstring(),app);shortcut((group/L"Uninstall.lnk").wstring(),(destination/L"Screencast-Uninstall.exe").wstring()+L"");}
+                if(startMenu) {auto group=std::filesystem::path(folder(FOLDERID_Programs))/L"Screencast";std::filesystem::create_directories(group);shortcut((group/L"Screencast.lnk").wstring(),app,icon,L"SanderStripa.Screencast");shortcut((group/L"Uninstall.lnk").wstring(),(destination/L"Screencast-Uninstall.exe").wstring(),icon,L"SanderStripa.Screencast.Uninstall");}
                 HKEY key{};check(HRESULT_FROM_WIN32(RegCreateKeyExW(HKEY_CURRENT_USER,L"Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Screencast",0,nullptr,0,KEY_SET_VALUE,nullptr,&key,nullptr)));
                 auto put=[&](wchar_t const* name,std::wstring const& value){RegSetValueExW(key,name,0,REG_SZ,reinterpret_cast<BYTE const*>(value.c_str()),DWORD((value.size()+1)*2));};
-                put(L"DisplayName",L"Screencast");put(L"DisplayVersion",L"0.2.4");put(L"InstallLocation",path);put(L"DisplayIcon",app);put(L"UninstallString",L"\""+(destination/L"Screencast-Uninstall.exe").wstring()+L"\" --uninstall");RegCloseKey(key);
+                put(L"DisplayName",L"Screencast");put(L"DisplayVersion",L"0.2.5");put(L"InstallLocation",path);put(L"DisplayIcon",icon);put(L"UninstallString",L"\""+(destination/L"Screencast-Uninstall.exe").wstring()+L"\" --uninstall");RegCloseKey(key);
                 progress=100;winrt::uninit_apartment();PostMessageW(window,Completed,1,0);
             }catch(...){error=errorText();PostMessageW(window,Completed,0,0);}
         });
@@ -212,6 +218,15 @@ int WINAPI wWinMain(HINSTANCE instance,HINSTANCE,PWSTR,int show) {
     try {
         winrt::init_apartment();int count{};auto args=CommandLineToArgvW(GetCommandLineW(),&count);std::vector<std::wstring> parameters;for(int i=0;i<count;++i)parameters.emplace_back(args[i]);
         if(count>=3 && std::wstring(args[1])==L"--install-test") {auto destination=safeDestination(args[2]);extract(destination);uninstallFiles(destination);LocalFree(args);return 0;}
+        if(count>=4 && std::wstring(args[1])==L"--shortcut-test") {
+            std::filesystem::path directory=args[2],appPath=args[3];LocalFree(args);std::filesystem::create_directories(directory);
+            try {
+                auto icon=(appPath.parent_path()/L"assets/Screencast-shell-0.2.5.ico").wstring();
+                if(!std::filesystem::exists(icon))throw std::runtime_error("Shortcut icon asset missing");
+                shortcut((directory/L"Screencast.lnk").wstring(),appPath.wstring(),icon,L"SanderStripa.Screencast");
+                shortcut((directory/L"Uninstall.lnk").wstring(),executableDir()+L"\\Screencast-Setup-x64.exe",icon,L"SanderStripa.Screencast.Uninstall");return 0;
+            }catch(...){std::ofstream file(directory/L"shortcut-error.txt");file<<winrt::to_string(winrt::hstring(errorText()));return 1;}
+        }
         wchar_t filename[32768]{};GetModuleFileNameW(nullptr,filename,32768);
         bool uninstall=(count>=2 && std::wstring(args[1])==L"--uninstall") || std::filesystem::path(filename).filename()==L"Screencast-Uninstall.exe";LocalFree(args);
         if(uninstall) {

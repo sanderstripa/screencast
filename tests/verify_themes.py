@@ -23,6 +23,7 @@ for name, expected in (("light", (247, 247, 245)), ("dark", (11, 11, 12))):
     print(f"{name}: palette, non-empty controls and text checked")
 assert np.mean(abs(images[0].astype(float) - images[1].astype(float))) > 150
 icon=Image.open(Path('assets/Screencast.ico'))
+assert Path('assets/Screencast-shell-0.2.5.ico').read_bytes()==Path('assets/Screencast.ico').read_bytes(), 'Shortcuts and executable use different icon artwork'
 for size in icon.ico.sizes():
     alpha=np.asarray(icon.ico.getimage(size).convert('RGBA'))[:,:,3]
     y,x=np.where(alpha>128)
