@@ -50,7 +50,13 @@ jobs:
             $focusPath = Join-Path $PWD "build/smoke/theme-$theme-mouse-focus.png"
             $process = Start-Process build/Release/Screencast.exe -ArgumentList "--snapshot-$theme", $focusPath, 'mouse-focus' -WindowStyle Hidden -PassThru
             if (-not $process.WaitForExit(15000) -or $process.ExitCode -ne 0) { throw 'Mouse focus rendering failed' }
+            $listPath = Join-Path $PWD "build/smoke/theme-$theme-dropdown.png"
+            $process = Start-Process build/Release/Screencast.exe -ArgumentList "--snapshot-$theme", $listPath, 'dropdown' -WindowStyle Hidden -PassThru
+            if (-not $process.WaitForExit(15000) -or $process.ExitCode -ne 0) { throw 'Dropdown rendering failed' }
           }
+          $process = Start-Process build/Release/Screencast.exe -ArgumentList '--dropdown-test', (Join-Path $PWD 'build/smoke') -WindowStyle Hidden -PassThru
+          if (-not $process.WaitForExit(15000)) { $process.Kill(); throw 'Dropdown interaction timed out' }
+          if ($process.ExitCode -ne 0) { Get-Content build/smoke/dropdown-error.txt -ErrorAction SilentlyContinue; throw 'Dropdown interaction failed' }
           $process = Start-Process build/Release/Screencast.exe -ArgumentList '--idle-paint-test', (Join-Path $PWD 'build/smoke') -WindowStyle Hidden -PassThru
           if (-not $process.WaitForExit(15000) -or $process.ExitCode -ne 0) { throw 'Visible idle repaint regression failed' }
           Get-Content build/smoke/idle-paint.txt

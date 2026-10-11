@@ -16,6 +16,10 @@ for name, expected in (("light", (247, 247, 245)), ("dark", (11, 11, 12))):
     images.append(image)
     focused=np.array(Image.open(root/f'theme-{name}-mouse-focus.png').convert('RGB'))
     assert np.array_equal(image,focused), 'A focused control adds an unwanted outline'
+    dropdown=np.array(Image.open(root/f'theme-{name}-dropdown.png').convert('RGB'))
+    assert np.max(abs(dropdown[168, 630].astype(int)-np.array(expected)))<=1, 'Dropdown uses the system menu background'
+    assert not np.array_equal(image[160:274,336:636],dropdown[160:274,336:636]), 'Dropdown was not rendered'
+    assert np.unique(dropdown[166:268,372:600].reshape(-1,3),axis=0).shape[0]>30, 'Dropdown text or selection missing'
     print(f"{name}: palette, non-empty controls and text checked")
 assert np.mean(abs(images[0].astype(float) - images[1].astype(float))) > 150
 icon=Image.open(Path('assets/Screencast.ico'))

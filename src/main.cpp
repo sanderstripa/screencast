@@ -14,6 +14,7 @@
 #include "overlay.h"
 #include "switch.h"
 #include "paint.h"
+#include "dropdown.h"
 
 int encoderSelfTest(std::wstring const& directory);
 int cameraSelfTest(std::wstring const& directory);
@@ -70,7 +71,7 @@ public:
     }
     std::wstring path, backgroundPath, lastFile, status{L"Готов к записи"};
     std::wstring snapshotPath;
-    bool mouseFocusSnapshot{};
+    bool mouseFocusSnapshot{},dropdownSnapshot{};
     std::wstring idleTestPath;int idleTestPhase{},idlePaints{};
     Palette palette{};
     std::shared_ptr<LiveSettings> live=std::make_shared<LiveSettings>();
@@ -464,12 +465,12 @@ public:
         auto& control = controls.at(id);
         if (control.kind == Kind::Choice) {
             if (control.items.empty()) return;
-            HMENU menu = CreatePopupMenu();
-            for (size_t i = 0; i < control.items.size(); ++i) AppendMenuW(menu, MF_STRING |
-                (static_cast<int>(i) == control.selected ? MF_CHECKED : 0), i+1, control.items[i].c_str());
             RECT r{}; GetWindowRect(control.window, &r);
-            auto picked = TrackPopupMenu(menu, TPM_RETURNCMD | TPM_LEFTALIGN, r.left, r.bottom, 0, window, nullptr);
-            DestroyMenu(menu);
+            // Copy the choices: device refresh messages may arrive while the popup is open.
+            auto choices=control.items;
+            Dropdown list(choices,font,dpi,control.selected,palette.background,palette.text,palette.line,palette.hover);
+            auto picked=list.show(window,r);
+            if(!IsWindow(window))return;
             if (picked) {
                 if(id==Background && picked==6 && recorder.busy() && backgroundPath.empty()) {
                     MessageBoxW(window,L"Сначала выберите своё изображение до начала записи.",L"Screencast",MB_OK);return;
@@ -528,6 +529,12 @@ public:
             if(mouseFocusSnapshot)item.itemState|=ODS_FOCUS;
             item.rcItem = {0,0,rect.right-rect.left,rect.bottom-rect.top};
             draw(item); RestoreDC(mem, saved);
+        }
+        if(dropdownSnapshot) {
+            auto const& c=controls[OutputMode];
+            Dropdown list(c.items,font,dpi,c.selected,palette.background,palette.text,palette.line,palette.hover);
+            list.width=px(300);list.rows=int(c.items.size());list.height=px(12)+list.rows*px(34);
+            auto saved=SaveDC(mem);SetViewportOrgEx(mem,px(336),px(160),nullptr);list.paint(mem);RestoreDC(mem,saved);
         }
         ComPtr<IWICImagingFactory> factory;
         check(CoCreateInstance(CLSID_WICImagingFactory, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&factory)));
@@ -642,9 +649,28 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int show) {
         if(args.size()>=3 && args[1]==L"--idle-paint-test"){state.idleTestPath=args[2];state.theme=2;show=SW_SHOWNOACTIVATE;}
         auto fontPath = executableDir() + L"\\assets\\Montserrat.ttf";
         AddFontResourceExW(fontPath.c_str(), FR_PRIVATE, nullptr);
+        if(args.size()>=2 && args[1]==L"--dropdown-test") {
+            if(args.size()>=3){std::filesystem::create_directories(args[2]);diagnostics=args[2]+L"\\dropdown-error.txt";}
+            auto font=CreateFontW(-13,0,0,0,FW_NORMAL,FALSE,FALSE,FALSE,DEFAULT_CHARSET,OUT_DEFAULT_PRECIS,CLIP_DEFAULT_PRECIS,CLEARTYPE_QUALITY,DEFAULT_PITCH,L"Montserrat");
+            auto owner=CreateWindowExW(0,L"STATIC",L"",WS_POPUP,0,0,10,10,nullptr,nullptr,instance,nullptr);
+            std::vector<std::wstring> values;for(int i=0;i<40;++i)values.push_back(L"Источник "+std::to_wstring(i));
+            auto run=[&](void (*script)(HWND),int expected) {
+                Dropdown list(values,font,96,0,RGB(11,11,12),RGB(240,240,240),RGB(52,54,58),RGB(30,31,33));
+                if(list.show(owner,RECT{100,100,400,132},script)!=expected)throw winrt::hresult_error(E_FAIL,L"Dropdown interaction failed");
+            };
+            run([](HWND h){PostMessageW(h,WM_KEYDOWN,VK_DOWN,0);PostMessageW(h,WM_KEYDOWN,VK_RETURN,0);},2);
+            run([](HWND h){PostMessageW(h,WM_KEYDOWN,VK_END,0);PostMessageW(h,WM_KEYDOWN,VK_RETURN,0);},40);
+            run([](HWND h){PostMessageW(h,WM_KEYDOWN,VK_ESCAPE,0);},0);
+            run([](HWND h){PostMessageW(h,WM_LBUTTONUP,0,MAKELPARAM(50,57));},2);
+            run([](HWND h){PostMessageW(h,WM_LBUTTONDOWN,0,MAKELPARAM(-10,-10));},0);
+            run([](HWND h){PostMessageW(h,WM_MOUSEWHEEL,MAKEWPARAM(0,-WHEEL_DELTA),0);PostMessageW(h,WM_KEYDOWN,VK_RETURN,0);},4);
+            DestroyWindow(owner);DeleteObject(font);RemoveFontResourceExW(fontPath.c_str(),FR_PRIVATE,nullptr);
+            MFShutdown();winrt::uninit_apartment();Gdiplus::GdiplusShutdown(gdiplus);return 0;
+        }
         if (args.size() >= 3 && (args[1] == L"--snapshot-light" || args[1] == L"--snapshot-dark")) {
             state.theme = args[1] == L"--snapshot-dark" ? 2 : 1; state.snapshotPath = args[2];
             state.mouseFocusSnapshot=args.size()>=4 && args[3]==L"mouse-focus";
+            state.dropdownSnapshot=args.size()>=4 && args[3]==L"dropdown";
         }
         WNDCLASSEXW cls{sizeof(cls)}; cls.lpfnWndProc = procedure; cls.hInstance = instance;
         cls.hCursor = LoadCursorW(nullptr, IDC_ARROW); cls.hIcon = static_cast<HICON>(LoadImageW(instance,MAKEINTRESOURCEW(101),IMAGE_ICON,256,256,0));cls.hIconSm=static_cast<HICON>(LoadImageW(instance,MAKEINTRESOURCEW(101),IMAGE_ICON,16,16,0));
