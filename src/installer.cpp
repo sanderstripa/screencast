@@ -169,6 +169,7 @@ public:
                 winrt::init_apartment();extract(destination);progress=75;
                 wchar_t self[32768]{};GetModuleFileNameW(nullptr,self,32768);std::filesystem::copy_file(self,destination/L"Screencast-Uninstall.exe",std::filesystem::copy_options::overwrite_existing);
                 auto app=(destination/L"Screencast.exe").wstring();if(desktop)shortcut(folder(FOLDERID_Desktop)+L"\\Screencast.lnk",app);
+                SHChangeNotify(SHCNE_UPDATEITEM,SHCNF_PATHW,app.c_str(),nullptr);
                 if(startMenu) {auto group=std::filesystem::path(folder(FOLDERID_Programs))/L"Screencast";std::filesystem::create_directories(group);shortcut((group/L"Screencast.lnk").wstring(),app);shortcut((group/L"Uninstall.lnk").wstring(),(destination/L"Screencast-Uninstall.exe").wstring()+L"");}
                 HKEY key{};check(HRESULT_FROM_WIN32(RegCreateKeyExW(HKEY_CURRENT_USER,L"Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Screencast",0,nullptr,0,KEY_SET_VALUE,nullptr,&key,nullptr)));
                 auto put=[&](wchar_t const* name,std::wstring const& value){RegSetValueExW(key,name,0,REG_SZ,reinterpret_cast<BYTE const*>(value.c_str()),DWORD((value.size()+1)*2));};
