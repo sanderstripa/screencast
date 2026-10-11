@@ -26,5 +26,6 @@ for theme,expected in [('light',(247,247,245)),('dark',(11,11,12))]:
     finish=np.array(Image.open(root/f'setup-ru-{theme}-3.png').convert('RGB'))
     finish_off=np.array(Image.open(root/f'setup-ru-{theme}-3-off.png').convert('RGB'))
     assert np.max(abs(finish[430:468,396:516].astype(int)-expected))<=1, 'Cancel remains on completion page'
-    assert blue_count(finish[322:352])>150 and blue_count(finish_off[322:352])<10, 'Completion check does not visibly change'
+    # Restrict the check to the circle: ClearType text has blue subpixel fringes.
+    assert blue_count(finish[322:352,150:210])>150 and blue_count(finish_off[322:352,150:210])<10, 'Completion check does not visibly change'
 print('All four installer pages rendered in RU/EN and light/dark themes')
