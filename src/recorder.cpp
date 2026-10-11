@@ -5,6 +5,8 @@
 #include "spectral.h"
 #include <avrt.h>
 #include <deque>
+#include <d3d11.h>
+#include <fstream>
 
 namespace {
 class Writer {
@@ -13,6 +15,7 @@ public:
         try { open(path, audio, true); }
         catch (...) { sink.Reset(); open(path, audio, false); }
     }
+    bool hardware() const {return hardware_;}
     void sample(DWORD stream, BYTE const* data, DWORD bytes, int64_t timestamp, int64_t duration) {
         ComPtr<IMFMediaBuffer> buffer; check(MFCreateMemoryBuffer(bytes, &buffer));
         BYTE* dest{}; check(buffer->Lock(&dest, nullptr, nullptr));
@@ -67,10 +70,22 @@ private:
     DWORD videoStream{}, audioStream{};
     int fps_{};
     std::vector<uint8_t> nv12;
+    ComPtr<ID3D11Device> device;
+    ComPtr<IMFDXGIDeviceManager> manager;
+    bool hardware_{};
     void open(std::wstring const& path, bool audio, bool hardware) {
         ComPtr<IMFAttributes> attrs; check(MFCreateAttributes(&attrs, 2));
         check(attrs->SetUINT32(MF_READWRITE_ENABLE_HARDWARE_TRANSFORMS, hardware));
         check(attrs->SetUINT32(MF_SINK_WRITER_DISABLE_THROTTLING, TRUE));
+        if(hardware) {
+            // Associate the encoder with the actual adapter; plain CPU buffers remain a supported fallback.
+            if(SUCCEEDED(D3D11CreateDevice(nullptr,D3D_DRIVER_TYPE_HARDWARE,nullptr,D3D11_CREATE_DEVICE_BGRA_SUPPORT|D3D11_CREATE_DEVICE_VIDEO_SUPPORT,
+                nullptr,0,D3D11_SDK_VERSION,&device,nullptr,nullptr))) {
+                UINT token{};
+                if(SUCCEEDED(MFCreateDXGIDeviceManager(&token,&manager)) && SUCCEEDED(manager->ResetDevice(device.Get(),token)))
+                    check(attrs->SetUnknown(MF_SINK_WRITER_D3D_MANAGER,manager.Get()));
+            }
+        } else {manager.Reset();device.Reset();}
         check(MFCreateSinkWriterFromURL(path.c_str(), nullptr, attrs.Get(), &sink));
         ComPtr<IMFMediaType> out; check(MFCreateMediaType(&out));
         check(out->SetGUID(MF_MT_MAJOR_TYPE, MFMediaType_Video));
@@ -109,6 +124,16 @@ private:
             check(sink->SetInputMediaType(audioStream, in.Get(), nullptr));
         }
         check(sink->BeginWriting());
+        ComPtr<IMFSinkWriterEx> extended;
+        if(SUCCEEDED(sink.As(&extended))) for(DWORD i=0;i<8;++i) {
+            GUID category{};ComPtr<IMFTransform> transform;
+            if(FAILED(extended->GetTransformForStream(videoStream,i,&category,&transform))) break;
+            ComPtr<IMFAttributes> attributes;
+            if(SUCCEEDED(transform->GetAttributes(&attributes))) {
+                UINT length{};
+                if(SUCCEEDED(attributes->GetStringLength(MFT_ENUM_HARDWARE_URL_Attribute,&length)) && length) hardware_=true;
+            }
+        }
     }
 };
 struct ProcessHandle {
@@ -160,6 +185,7 @@ void Recorder::start(Settings settings, HWND notify) {
             GUID id{}; check(CoCreateGuid(&id)); wchar_t suffix[40]{}; StringFromGUID2(id, suffix, 40);
             temporary = settings.path + L"." + suffix + L".partial.mp4";
             writer = std::make_unique<Writer>(temporary, (image.width + 1) & ~1, (image.height + 1) & ~1, settings.fps, system || mic);
+            hardware_=writer->hardware();
             int64_t epoch = clock100ns(); epoch_ = epoch;
             if (system) system->start(epoch); if (mic) mic->start(epoch);
             recording_ = true;
@@ -302,5 +328,24 @@ int encoderSelfTest(std::wstring const& directory) {
     cameraWriter.finalize();
     auto blurred=blurImage(camera,12);
     if(blurred.bgra!=camera.bgra) throw winrt::hresult_error(E_FAIL,L"Размытие изменило однотонное изображение");
+    return 0;
+}
+int cameraSelfTest(std::wstring const& directory) {
+    std::wofstream log{std::filesystem::path(directory)/L"camera-diagnostics.txt"};
+    auto devices=cameraDevices();
+    if(devices.empty()) {log<<L"No physical webcam detected; hardware capture test unavailable.\n";return 0;}
+    Settings settings;settings.cameraId=devices.front().id;std::atomic_bool stop{};
+    Camera camera(settings);auto started=clock100ns();camera.waitForFirstFrame(stop);
+    log<<L"first_frame_ms="<<double(clock100ns()-started)/10000<<L"\n";
+    for(auto mode:{BackgroundMode::Original,BackgroundMode::Blur,BackgroundMode::Solid,BackgroundMode::Gradient,BackgroundMode::Interior}) {
+        if(mode!=BackgroundMode::Original && !std::filesystem::exists(executableDir()+L"\\models\\rvm_mobilenetv3_fp32.onnx")) continue;
+        settings.live->background=mode;
+        auto until=clock100ns()+30000000;int count{};int64_t previous{};
+        while(clock100ns()<until) {
+            auto frame=camera.latestFrame();if(frame && frame->time100ns!=previous) {previous=frame->time100ns;++count;}
+            std::this_thread::sleep_for(std::chrono::milliseconds(5));
+        }
+        log<<L"mode="<<int(mode)<<L" delivered_fps="<<count/3.0<<L" "<<camera.diagnostics()<<L"\n";log.flush();
+    }
     return 0;
 }

@@ -13,6 +13,7 @@
 #include <windowsx.h>
 
 int encoderSelfTest(std::wstring const& directory);
+int cameraSelfTest(std::wstring const& directory);
 namespace {
 enum Id { SourceKind = 100, Source, Refresh, OutputMode, OutputDevice, Microphone, MicDevice,
     Denoise, Webcam, CameraDevice, Corner, Background, BackgroundFile, Save, Start, ThemeSystem, ThemeLight, ThemeDark,
@@ -300,6 +301,7 @@ public:
             auto t = recorder.elapsed(); wchar_t duration[64]{};
             swprintf_s(duration, L"Запись · %02lld:%02lld:%02lld", t / 3600, t / 60 % 60, t % 60);
             label = duration;
+            label+=recorder.hardware()?L" · аппаратное кодирование":L" · программное кодирование";
         }
         text(dc, label, 30, 1308, 480, 22, smallFont, palette.muted);
         displayed=recorder.preview();
@@ -425,6 +427,12 @@ public:
             auto picked = TrackPopupMenu(menu, TPM_RETURNCMD | TPM_LEFTALIGN, r.left, r.bottom, 0, window, nullptr);
             DestroyMenu(menu);
             if (picked) {
+                if(id==Background && picked==6 && recorder.busy() && backgroundPath.empty()) {
+                    MessageBoxW(window,L"Сначала выберите своё изображение до начала записи.",L"Screencast",MB_OK);return;
+                }
+                if(id==Background && picked>1 && !std::filesystem::exists(executableDir()+L"\\models\\rvm_mobilenetv3_fp32.onnx")) {
+                    MessageBoxW(window,L"Для обработки фона запустите scripts/setup-background.ps1 в папке приложения. Модель загружается один раз.",L"Screencast",MB_OK);return;
+                }
                 control.selected = picked - 1; updateText(id);
                 if (id == SourceKind) sourceItems();
                 if (id == OutputMode) outputItems();
@@ -570,9 +578,10 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int show) {
         check(MFStartup(MF_VERSION)); mf = true;
         int argc{}; auto argv = CommandLineToArgvW(GetCommandLineW(), &argc);
         std::vector<std::wstring> args; for (int i = 0; i < argc; ++i) args.emplace_back(argv[i]); LocalFree(argv);
-        if (args.size() >= 3 && (args[1] == L"--self-test" || args[1] == L"--model-test")) {
+        if (args.size() >= 3 && (args[1] == L"--self-test" || args[1] == L"--model-test" || args[1]==L"--camera-test")) {
             std::filesystem::create_directories(args[2]); diagnostics = args[2] + L"\\test-error.txt";
             if (args[1] == L"--self-test") result = encoderSelfTest(args[2]);
+            else if(args[1]==L"--camera-test") result=cameraSelfTest(args[2]);
             else { Camera::testModel(); result = 0; }
             MFShutdown(); winrt::uninit_apartment(); return result;
         }

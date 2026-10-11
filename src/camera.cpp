@@ -115,6 +115,8 @@ struct Camera::State {
     int width{}, height{}, stride{};
     int64_t timestamp{}, processedAt{};
     std::wstring error;
+    uint64_t captured{},effectFrames{};
+    int64_t effectTime{},maximumEffectTime{};
     LearningModelSession session{nullptr};
     std::array<TensorFloat, 4> recurrent{nullptr, nullptr, nullptr, nullptr};
     bool replace{};
@@ -159,8 +161,10 @@ struct Camera::State {
                     previous=mode; preset=selected;
                 }
                 if(mode==BackgroundMode::Blur) background=blurImage(resizeImage(*input,256,std::max(32,input->height*256/input->width)),live->blurStrength);
+                auto started=clock100ns();
                 auto output=std::make_shared<Image>(matting(*input)); output->time100ns=input->time100ns;
-                { std::lock_guard lock(mutex); published=std::move(output); changed.notify_all(); }
+                auto elapsed=clock100ns()-started;
+                { std::lock_guard lock(mutex); published=std::move(output);++effectFrames;effectTime+=elapsed;maximumEffectTime=std::max(maximumEffectTime,elapsed);changed.notify_all(); }
             }
         } catch(...) { std::lock_guard lock(mutex); error=errorText(); changed.notify_all(); }
         session=nullptr; for(auto& value:recurrent) value=nullptr;
@@ -243,7 +247,7 @@ public:
                 image.time100ns = now;
                 {
                     std::lock_guard lock(state->mutex);
-                    state->raw = std::make_shared<Image>(std::move(image)); state->timestamp = clock100ns();
+                    state->raw = std::make_shared<Image>(std::move(image)); state->timestamp = clock100ns();++state->captured;
                     state->changed.notify_all();
                 }
                 state->processedAt = now;
@@ -327,7 +331,12 @@ bool Camera::waitForFirstFrame(std::atomic_bool const& stop,int timeoutMs) {
     }
     return false;
 }
-std::wstring Camera::diagnostics() { std::lock_guard lock(state_->mutex); return std::to_wstring(state_->width)+L"x"+std::to_wstring(state_->height); }
+std::wstring Camera::diagnostics() {
+    std::lock_guard lock(state_->mutex);
+    return std::to_wstring(state_->width)+L"x"+std::to_wstring(state_->height)+L" captured="+std::to_wstring(state_->captured)+
+        L" effects="+std::to_wstring(state_->effectFrames)+L" mean_effect_ms="+std::to_wstring(state_->effectFrames?double(state_->effectTime)/state_->effectFrames/10000:0)+
+        L" max_effect_ms="+std::to_wstring(double(state_->maximumEffectTime)/10000);
+}
 void Camera::testModel() {
     State state;
     auto model = LearningModel::LoadFromFilePath(executableDir() + L"\\models\\rvm_mobilenetv3_fp32.onnx");
