@@ -561,7 +561,7 @@ LRESULT CALLBACK procedure(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam
         case WM_LBUTTONUP: if(app->dragging) {app->dragging=false;ReleaseCapture();}return 0;
         case WM_CAPTURECHANGED: app->dragging=false;return 0;
         case WM_DRAWITEM: {auto item=*reinterpret_cast<DRAWITEMSTRUCT*>(lParam);bufferedPaint(item.hDC,item.rcItem,[&](HDC back){item.hDC=back;app->draw(item);});return TRUE;}
-        case WM_PAINT: {if(app->idleTestPhase==1)++app->idlePaints; PAINTSTRUCT ps{}; auto dc = BeginPaint(hwnd, &ps);RECT rect{};GetClientRect(hwnd,&rect);bufferedPaint(dc,rect,[](HDC back){app->paint(back);}); EndPaint(hwnd, &ps); return 0; }
+        case WM_PAINT: {if(app->idleTestPhase==1)++app->idlePaints; PAINTSTRUCT ps{}; auto dc = BeginPaint(hwnd, &ps);bufferedPaint(dc,ps.rcPaint,[](HDC back){app->paint(back);}); EndPaint(hwnd, &ps); return 0; }
         case WM_ERASEBKGND: return 1;
         case WM_SETTINGCHANGE: if (!app->theme) app->applyTheme(); return 0;
         case WM_DPICHANGED: {

@@ -94,7 +94,7 @@ public:
     }
     std::wstring tr(wchar_t const* ru,wchar_t const* en) const {return english?en:ru;}
     COLORREF bg()const{return dark?RGB(11,11,12):RGB(247,247,245);}COLORREF fg()const{return dark?RGB(237,237,235):RGB(16,24,36);}
-    void theme() {if(background)DeleteObject(background);background=CreateSolidBrush(bg());BOOL d=dark;DwmSetWindowAttribute(window,DWMWA_USE_IMMERSIVE_DARK_MODE,&d,sizeof(d));InvalidateRect(window,nullptr,TRUE);for(auto [id,b]:buttons)InvalidateRect(b,nullptr,TRUE);if(pathEdit)InvalidateRect(pathEdit,nullptr,TRUE);}
+    void theme() {if(background)DeleteObject(background);background=CreateSolidBrush(bg());BOOL d=dark;DwmSetWindowAttribute(window,DWMWA_USE_IMMERSIVE_DARK_MODE,&d,sizeof(d));auto border=bg();DwmSetWindowAttribute(window,DWMWA_BORDER_COLOR,&border,sizeof(border));InvalidateRect(window,nullptr,TRUE);for(auto [id,b]:buttons)InvalidateRect(b,nullptr,TRUE);if(pathEdit)InvalidateRect(pathEdit,nullptr,TRUE);}
     void add(int id,int x,int y,int w,int h) {buttons[id]=CreateWindowW(L"BUTTON",L"",WS_CHILD|WS_VISIBLE|WS_TABSTOP|BS_OWNERDRAW,x,y,w,h,window,reinterpret_cast<HMENU>(INT_PTR(id)),GetModuleHandleW(nullptr),nullptr);}
     void create() {
         AddFontResourceExW((executableDir()+L"\\assets\\Montserrat.ttf").c_str(),FR_PRIVATE,nullptr);
