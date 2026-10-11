@@ -1,4 +1,4 @@
-param([string]$App,[string]$Setup,[string]$Shortcuts)
+param([string]$App,[string]$Setup,[string]$Shortcuts,[switch]$IconsOnly)
 $ErrorActionPreference='Stop'
 $App=(Resolve-Path -LiteralPath $App).Path;$Setup=(Resolve-Path -LiteralPath $Setup).Path;$Shortcuts=(Resolve-Path -LiteralPath $Shortcuts).Path
 Add-Type -TypeDefinition @'
@@ -77,6 +77,7 @@ $w=0;$h=0;$setupPixels=[ShellCheck]::Resource($Setup,[ref]$w,[ref]$h)
 if($w-ne32-or$h-ne32){throw 'Installer icon is not 32x32'}
 $appPixels=[ShellCheck]::Resource($App,[ref]$w,[ref]$h)
 if([Convert]::ToBase64String($setupPixels)-ne[Convert]::ToBase64String($appPixels)){throw 'App and installer resource icons differ'}
+if($IconsOnly){'Shortcut icons and app/installer resource images match.';return}
 $launchers=@();foreach($folder in @('Desktop','StartMenu')) {
  $directory=Join-Path $Shortcuts $folder;New-Item -ItemType Directory -Path $directory -Force|Out-Null
  $launcher=Join-Path $directory 'Screencast.lnk';Copy-Item -LiteralPath (Join-Path $Shortcuts 'Screencast.lnk') -Destination $launcher -Force;$launchers+=$launcher
