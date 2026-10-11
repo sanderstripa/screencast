@@ -49,14 +49,18 @@ static Image composeMatte(Image const& source,Image const& background,std::vecto
     Image output=source;
     float scale=std::max(float(source.width)/background.width,float(source.height)/background.height);
     float cropW=source.width/scale,cropH=source.height/scale;
-    for(int y=0;y<source.height;++y)for(int x=0;x<source.width;++x) {
+    auto renderRows=[&](int first,int last) {for(int y=first;y<last;++y)for(int x=0;x<source.width;++x) {
         BilinearPoint mask(maskWidth,maskHeight,(x+.5f)*maskWidth/source.width-.5f,(y+.5f)*maskHeight/source.height-.5f);
         float a=std::clamp(mask.sample([&](int sx,int sy){return alpha[static_cast<size_t>(sy)*maskWidth+sx];}),0.f,1.f);
         auto bg=sampleBgra(background.bgra.data(),background.width,background.height,(background.width-cropW)/2+(x+.5f)/scale-.5f,(background.height-cropH)/2+(y+.5f)/scale-.5f);
         auto pixel=output.bgra.data()+(static_cast<size_t>(y)*source.width+x)*4;
         for(int c=0;c<3;++c)pixel[c]=static_cast<uint8_t>(pixel[c]*a+bg[c]*(1-a)+.5f);
         pixel[3]=255;
-    }
+    }};
+    unsigned count=source.width*source.height>=300000?std::clamp(std::thread::hardware_concurrency()/2,1u,4u):1u;
+    std::vector<std::jthread> workers;workers.reserve(count-1);
+    for(unsigned i=1;i<count;++i)workers.emplace_back(renderRows,source.height*i/count,source.height*(i+1)/count);
+    renderRows(0,source.height/count);workers.clear();
     return output;
 }
 void compositeCamera(Image& screen, Image const& camera, int corner) {
