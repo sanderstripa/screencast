@@ -70,6 +70,7 @@ public:
     }
     std::wstring path, backgroundPath, lastFile, status{L"Готов к записи"};
     std::wstring snapshotPath;
+    bool mouseFocusSnapshot{};
     std::wstring idleTestPath;int idleTestPhase{},idlePaints{};
     Palette palette{};
     std::shared_ptr<LiveSettings> live=std::make_shared<LiveSettings>();
@@ -528,6 +529,7 @@ public:
             DRAWITEMSTRUCT item{};
             item.CtlID = id; item.hwndItem = c.window; item.hDC = mem; item.itemAction = ODA_DRAWENTIRE;
             item.itemState = IsWindowEnabled(c.window) ? 0 : ODS_DISABLED;
+            if(mouseFocusSnapshot && id==ThemeSystem+theme)item.itemState|=ODS_FOCUS|ODS_NOFOCUSRECT;
             item.rcItem = {0,0,rect.right-rect.left,rect.bottom-rect.top};
             draw(item); RestoreDC(mem, saved);
         }
@@ -646,6 +648,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int show) {
         AddFontResourceExW(fontPath.c_str(), FR_PRIVATE, nullptr);
         if (args.size() >= 3 && (args[1] == L"--snapshot-light" || args[1] == L"--snapshot-dark")) {
             state.theme = args[1] == L"--snapshot-dark" ? 2 : 1; state.snapshotPath = args[2];
+            state.mouseFocusSnapshot=args.size()>=4 && args[3]==L"mouse-focus";
         }
         WNDCLASSEXW cls{sizeof(cls)}; cls.lpfnWndProc = procedure; cls.hInstance = instance;
         cls.hCursor = LoadCursorW(nullptr, IDC_ARROW); cls.hIcon = LoadIconW(instance,MAKEINTRESOURCEW(101));cls.hIconSm=static_cast<HICON>(LoadImageW(instance,MAKEINTRESOURCEW(101),IMAGE_ICON,16,16,0));

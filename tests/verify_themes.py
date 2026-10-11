@@ -14,5 +14,7 @@ for name, expected in (("light", (247, 247, 245)), ("dark", (11, 11, 12))):
     for area in (image[24:50, 30:300], image[100:122, 336:460]):
         assert np.max(area) - np.min(area) > 60, f"Missing text in {name} theme"
     images.append(image)
+    focused=np.array(Image.open(root/f'theme-{name}-mouse-focus.png').convert('RGB'))
+    assert np.array_equal(image,focused), 'Mouse click adds an unwanted focus rectangle'
     print(f"{name}: palette, non-empty controls and text checked")
 assert np.mean(abs(images[0].astype(float) - images[1].astype(float))) > 150
