@@ -71,4 +71,3 @@ $offset=6+16*$images.Count
 foreach($image in $images) { $dimension=if($image.Size-eq256){0}else{$image.Size};$writer.Write([byte]$dimension);$writer.Write([byte]$dimension);$writer.Write([byte]0);$writer.Write([byte]0);$writer.Write([uint16]1);$writer.Write([uint16]32);$writer.Write([uint32]$image.Bytes.Length);$writer.Write([uint32]$offset);$offset+=$image.Bytes.Length }
 foreach($image in $images){$writer.Write([byte[]]$image.Bytes)};$writer.Dispose();$master.Dispose()
 Copy-Item (Join-Path $Destination 'Screencast.ico') (Join-Path $Destination 'Screencast-shell-0.2.6.ico') -Force
-
