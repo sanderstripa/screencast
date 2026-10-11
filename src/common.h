@@ -67,6 +67,7 @@ struct LiveSettings {
     std::atomic<float> cameraX{1.f}, cameraY{1.f};
     std::atomic<BackgroundMode> background{BackgroundMode::Original};
     std::atomic<int> backgroundPreset{}, blurStrength{16};
+    std::atomic<int64_t> overlayReady{};
 };
 struct Settings {
     Target target;

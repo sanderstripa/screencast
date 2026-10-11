@@ -149,6 +149,7 @@ void Recorder::join() { if (worker_.joinable()) worker_.join(); }
 void Recorder::start(Settings settings, HWND notify) {
     if (busy_) return;
     join(); stop_ = false; epoch_ = 0; busy_ = true; preview_=nullptr;
+    webcam_=nullptr; settings.live->overlayReady=0;
     worker_ = std::thread([this, settings = std::move(settings), notify] {
         auto result = std::make_unique<RecordingResult>();
         std::unique_ptr<Writer> writer;
@@ -177,9 +178,18 @@ void Recorder::start(Settings settings, HWND notify) {
             std::unique_ptr<Camera> camera;
             if (settings.camera) camera = std::make_unique<Camera>(settings);
             if(camera && !camera->waitForFirstFrame(stop_)) { result->cancelled=true; throw winrt::hresult_error(E_ABORT,L"Запуск отменен"); }
+            if(camera) {
+                webcam_=camera->latestFrame();
+                auto deadline=clock100ns()+50000000;
+                while(!stop_ && !settings.live->overlayReady) {
+                    if(clock100ns()>deadline) throw winrt::hresult_error(E_FAIL,L"Не удалось показать кружок камеры на экране");
+                    std::this_thread::sleep_for(std::chrono::milliseconds(5));
+                }
+            }
             Image image;
             auto deadline = clock100ns() + 50000000;
-            while (!stop_ && !capture.next(image)) {
+            while (!stop_) {
+                if(capture.next(image) && (!camera || !settings.target.monitor || image.time100ns>=settings.live->overlayReady.load())) break;
                 if (clock100ns() > deadline) throw winrt::hresult_error(E_FAIL, L"Нет кадров от источника. Восстановите свернутое окно");
                 std::this_thread::sleep_for(std::chrono::milliseconds(5));
             }
@@ -217,6 +227,7 @@ void Recorder::start(Settings settings, HWND notify) {
                 }
                 if (camera) {
                     auto value = camera->latestFrame();
+                    webcam_=value;
                     if (value && value->time100ns > lastCameraTimestamp) {
                         lastCameraTimestamp = value->time100ns; cameraQueue.push_back(std::move(value));
                         while(cameraQueue.size()>16) cameraQueue.pop_front();
@@ -234,7 +245,9 @@ void Recorder::start(Settings settings, HWND notify) {
                     Image output = image;
                     auto position=movement.step({settings.live->cameraX,settings.live->cameraY},1.f/settings.fps);
                     cameraX_=position.x; cameraY_=position.y;
-                    if (cameraImage) compositeCamera(output, *cameraImage, position);
+                    // A monitor includes the real desktop overlay, also visible to Print Screen.
+                    // Window capture excludes unrelated top-level windows, so composite there only.
+                    if (cameraImage && !settings.target.monitor) compositeCamera(output, *cameraImage, position);
                     preview_=std::make_shared<Image>(resizeImage(output,480,std::max(1,output.height*480/output.width)));
                     writer->video(output, videoFrame++);
                     // Falling behind by >3 s signals overload instead of allocating an unbounded queue.
@@ -283,7 +296,7 @@ void Recorder::start(Settings settings, HWND notify) {
                 writer.reset();
             }
         }
-        recording_ = false; busy_ = false;
+        webcam_=nullptr; recording_ = false; busy_ = false;
         if (mmcss) AvRevertMmThreadCharacteristics(mmcss);
         if (apartment) winrt::uninit_apartment();
         if (PostMessageW(notify, WM_RECORD_STATUS, 0, reinterpret_cast<LPARAM>(result.get()))) result.release();

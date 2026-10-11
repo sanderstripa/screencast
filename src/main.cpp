@@ -11,6 +11,8 @@
 #include <fstream>
 #include <commctrl.h>
 #include <windowsx.h>
+#include "overlay.h"
+#include "switch.h"
 
 int encoderSelfTest(std::wstring const& directory);
 int cameraSelfTest(std::wstring const& directory);
@@ -36,6 +38,27 @@ public:
     int previousAudioMode{1}, systemOutputIndex{}, processIndex{};
     std::vector<Device> microphones, outputs, cameras;
     Recorder recorder;
+    CameraOverlay overlay;
+    HANDLE modelDownload{};int pendingBackground{};
+    void installModel(int mode) {
+        pendingBackground=mode;if(modelDownload)return;
+        auto script=executableDir()+L"\\scripts\\setup-background.ps1";
+        if(!std::filesystem::exists(script)) throw winrt::hresult_error(E_FAIL,L"Распакуйте приложение полностью или переустановите его: отсутствует компонент загрузки эффектов");
+        auto command=L"powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File \""+script+L"\" -AppDirectory \""+executableDir()+L"\"";
+        STARTUPINFOW startup{sizeof(startup)};startup.dwFlags=STARTF_USESHOWWINDOW;startup.wShowWindow=SW_HIDE;PROCESS_INFORMATION process{};
+        check(CreateProcessW(nullptr,command.data(),nullptr,nullptr,FALSE,CREATE_NO_WINDOW,nullptr,nullptr,&startup,&process)?S_OK:HRESULT_FROM_WIN32(GetLastError()));
+        CloseHandle(process.hThread);modelDownload=process.hProcess;status=L"Загружаю эффекты фона (15 МБ)…";enabled();
+    }
+    void tick() {
+        overlay.update(recorder.busy()?recorder.webcam():nullptr);
+        if(modelDownload && WaitForSingleObject(modelDownload,0)==WAIT_OBJECT_0) {
+            DWORD code{};GetExitCodeProcess(modelDownload,&code);CloseHandle(modelDownload);modelDownload=nullptr;
+            if(code==0 && std::filesystem::exists(executableDir()+L"\\models\\rvm_mobilenetv3_fp32.onnx")) {
+                controls[Background].selected=pendingBackground;backgroundItems();updateText(Background);updateLive();status=L"Эффекты фона готовы";
+            } else {status=L"Загрузка не удалась. Нажмите «Загрузить эффекты» ещё раз";}
+            enabled();InvalidateRect(window,nullptr,FALSE);
+        }
+    }
     std::wstring path, backgroundPath, lastFile, status{L"Готов к записи"};
     std::wstring snapshotPath;
     Palette palette{};
@@ -89,7 +112,7 @@ public:
     int px(int value) const { return MulDiv(value, dpi, 96); }
     void scrollTo(int position) {
         RECT r{}; GetClientRect(window, &r);
-        position = std::clamp(position, 0, std::max(0, px(1400) - static_cast<int>(r.bottom)));
+        position = 0;
         int delta = scroll - position; scroll = position;
         SetScrollPos(window, SB_VERT, scroll, TRUE);
         ScrollWindowEx(window, 0, delta, nullptr, nullptr, nullptr, nullptr, SW_SCROLLCHILDREN | SW_INVALIDATE | SW_ERASE);
@@ -98,7 +121,7 @@ public:
     void scrollRange() {
         RECT r{}; GetClientRect(window, &r);
         SCROLLINFO info{sizeof(info), SIF_RANGE | SIF_PAGE | SIF_POS};
-        info.nMax = px(1400) - 1; info.nPage = r.bottom; info.nPos = scroll;
+        info.nMax = r.bottom-1; info.nPage = r.bottom; info.nPos = 0;
         SetScrollInfo(window, SB_VERT, &info, TRUE);
     }
     void reveal(int id) {
@@ -222,7 +245,8 @@ public:
             if(id==SystemVolume) enable &= controls[OutputMode].selected!=0;
             if (id == OutputDevice) enable &= controls[OutputMode].selected != 0;
             if (id == CameraDevice || id == Corner || id == Background) enable &= controls[Webcam].checked && !cameras.empty();
-            if (id == BackgroundFile) enable &= controls[Webcam].checked && controls[Background].selected==5;
+            if (id == BackgroundFile) enable &= controls[Webcam].checked && !modelDownload &&
+                (!std::filesystem::exists(executableDir()+L"\\models\\rvm_mobilenetv3_fp32.onnx") || controls[Background].selected==5);
             if(id==BackgroundPreset) enable &= controls[Webcam].checked && controls[Background].selected>=2 && controls[Background].selected<=4;
             if(id==BlurStrength) enable &= controls[Webcam].checked && controls[Background].selected==1;
             EnableWindow(control.window, enable);
@@ -230,44 +254,44 @@ public:
         EnableWindow(controls[Start].window, !finishing);
         controls[Start].label = recorder.busy() ? L"Остановить запись" : L"Начать запись";
         updateText(Start); InvalidateRect(window, nullptr, FALSE);
+        if(!std::filesystem::exists(executableDir()+L"\\models\\rvm_mobilenetv3_fp32.onnx")) {
+            controls[BackgroundFile].label=modelDownload?L"Загрузка эффектов…":L"Загрузить эффекты фона (15 МБ)";updateText(BackgroundFile);
+        } else if(backgroundPath.empty()) {controls[BackgroundFile].label=L"Выбрать своё изображение…";updateText(BackgroundFile);}
     }
     void create() {
         dpi = GetDpiForWindow(window); fonts();
-        add(ThemeSystem, Kind::Segment, L"Система", 30, 82, 156, 30);
-        add(ThemeLight, Kind::Segment, L"Светлая", 192, 82, 156, 30);
-        add(ThemeDark, Kind::Segment, L"Тёмная", 354, 82, 156, 30);
-        add(SourceKind, Kind::Choice, L"Источник", 30, 170, 360, 34);
-        setItems(SourceKind, {L"Запись экрана", L"Запись отдельного окна"});
-        add(Refresh, Kind::Button, L"Обновить", 400, 170, 110, 34);
-        add(Source, Kind::Choice, L"Экран / окно", 30, 214, 480, 34);
-        add(OutputMode, Kind::Choice, L"Выходной звук", 30, 306, 480, 34);
-        setItems(OutputMode, {L"Звук выключен", L"Системный звук", L"Звук выбранного приложения / процесса"});
-        controls[OutputMode].selected = 1; updateText(OutputMode);
-        add(OutputDevice, Kind::Choice, L"Устройство системного звука", 30, 350, 480, 34);
-        add(Microphone, Kind::Toggle, L"Микрофон", 30, 458, 480, 30); setChecked(Microphone, true);
-        add(MicDevice, Kind::Choice, L"Устройство микрофона", 30, 498, 480, 34);
-        add(Denoise, Kind::Toggle, L"Программное шумоподавление", 30, 606, 480, 30);
-        add(Webcam, Kind::Toggle, L"Круглая веб-камера", 30, 756, 480, 30);
-        add(CameraDevice, Kind::Choice, L"Камера", 30, 794, 295, 34);
-        add(Corner, Kind::Choice, L"Угол камеры", 335, 794, 175, 34);
-        setItems(Corner, {L"Слева сверху", L"Справа сверху", L"Слева снизу", L"Справа снизу"});
-        controls[Corner].selected = 3; updateText(Corner);
-        add(Background, Kind::Choice, L"Фон камеры", 30, 838, 480, 34);
-        setItems(Background,{L"Реальный фон",L"Размыть реальный фон",L"Однотонный фон",L"Спокойный градиент",L"Нейтральный интерьер",L"Своё изображение"});
-        add(BackgroundPreset,Kind::Choice,L"Вариант фона",30,882,480,34); backgroundItems();
-        add(BlurStrength,Kind::Slider,L"Размытие",30,926,480,54); controls[BlurStrength].selected=40;
-        add(SystemVolume,Kind::Slider,L"Громкость системного звука",30,394,480,54);
-        add(MicVolume,Kind::Slider,L"Громкость микрофона",30,542,480,54);
-        for(int id:{SystemVolume,MicVolume}) { controls[id].maximum=200; controls[id].selected=100; updateText(id); }
-        add(NoiseStrength,Kind::Slider,L"Интенсивность шумоподавления",30,644,480,54); controls[NoiseStrength].selected=65; updateText(NoiseStrength);
-        add(BackgroundFile, Kind::Button, L"Выбрать изображение…", 30, 990, 480, 34);
-        add(Save, Kind::Button, L"Куда сохранить MP4…", 30, 1340, 235, 38);
-        add(Start, Kind::Button, L"Начать запись", 275, 1340, 235, 38);
-        RECT client{0,0,px(540),px(1400)};
-        MONITORINFO info{sizeof(info)}; GetMonitorInfoW(MonitorFromWindow(window, MONITOR_DEFAULTTONEAREST), &info);
-        client.bottom = std::min(client.bottom, info.rcWork.bottom - info.rcWork.top - px(60));
-        AdjustWindowRectExForDpi(&client, WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX | WS_VSCROLL, FALSE, 0, dpi);
-        SetWindowPos(window, nullptr, 0, 0, client.right-client.left, client.bottom-client.top, SWP_NOMOVE | SWP_NOZORDER);
+        add(ThemeSystem,Kind::Segment,L"Система",610,30,112,30);
+        add(ThemeLight,Kind::Segment,L"Светлая",730,30,112,30);
+        add(ThemeDark,Kind::Segment,L"Тёмная",850,30,126,30);
+        add(SourceKind,Kind::Choice,L"Источник",24,128,194,34);setItems(SourceKind,{L"Запись экрана",L"Отдельное окно"});
+        add(Refresh,Kind::Button,L"Обновить",226,128,84,34);
+        add(Source,Kind::Choice,L"Экран / окно",24,172,286,34);
+        add(OutputMode,Kind::Choice,L"Выходной звук",336,128,300,34);setItems(OutputMode,{L"Звук выключен",L"Системный звук",L"Звук приложения / процесса"});controls[OutputMode].selected=1;
+        add(OutputDevice,Kind::Choice,L"Устройство выхода",336,172,300,34);
+        add(SystemVolume,Kind::Slider,L"Системный звук",336,214,300,54);
+        add(Microphone,Kind::Toggle,L"Микрофон",336,280,300,30);setChecked(Microphone,true);
+        add(MicDevice,Kind::Choice,L"Устройство микрофона",336,318,300,34);
+        add(MicVolume,Kind::Slider,L"Громкость микрофона",336,360,300,54);
+        for(int id:{SystemVolume,MicVolume}) {controls[id].maximum=200;controls[id].selected=100;updateText(id);}
+        add(Denoise,Kind::Toggle,L"Шумоподавление",336,430,300,30);
+        add(NoiseStrength,Kind::Slider,L"Интенсивность",336,468,300,54);controls[NoiseStrength].selected=65;updateText(NoiseStrength);
+        add(Webcam,Kind::Toggle,L"Кружок на экране",662,128,314,30);
+        add(CameraDevice,Kind::Choice,L"Камера",662,168,314,34);
+        add(Corner,Kind::Choice,L"Положение",662,210,314,34);setItems(Corner,{L"Слева сверху",L"Справа сверху",L"Слева снизу",L"Справа снизу"});controls[Corner].selected=3;updateText(Corner);
+        add(Background,Kind::Choice,L"Фон",662,252,314,34);setItems(Background,{L"Реальный фон",L"Размыть реальный фон",L"Однотонный фон",L"Спокойный градиент",L"Нейтральный интерьер",L"Своё изображение"});
+        add(BackgroundPreset,Kind::Choice,L"Вариант",662,294,314,34);backgroundItems();
+        add(BlurStrength,Kind::Slider,L"Размытие",662,336,314,54);controls[BlurStrength].selected=40;updateText(BlurStrength);
+        add(BackgroundFile,Kind::Button,L"Выбрать своё изображение…",662,402,314,34);
+        add(Save,Kind::Button,L"Куда сохранить MP4…",24,580,250,38);
+        add(Start,Kind::Button,L"Начать запись",726,580,250,38);
+        MONITORINFO monitor{sizeof(monitor)};GetMonitorInfoW(MonitorFromWindow(window,MONITOR_DEFAULTTONEAREST),&monitor);
+        dpi=std::min(dpi,std::min((monitor.rcWork.right-monitor.rcWork.left-20)*96/1000,(monitor.rcWork.bottom-monitor.rcWork.top-50)*96/640));
+        fonts();
+        // Rescale children if a small desktop cannot fit the preferred system scale.
+        int originalDpi=GetDpiForWindow(window);
+        if(dpi!=originalDpi) for(auto const& [id,c]:controls) {RECT r{};GetWindowRect(c.window,&r);MapWindowPoints(nullptr,window,reinterpret_cast<POINT*>(&r),2);SetWindowPos(c.window,nullptr,MulDiv(r.left,dpi,originalDpi),MulDiv(r.top,dpi,originalDpi),MulDiv(r.right-r.left,dpi,originalDpi),MulDiv(r.bottom-r.top,dpi,originalDpi),SWP_NOZORDER);}
+        RECT client{0,0,px(1000),px(640)};AdjustWindowRectExForDpi(&client,WS_OVERLAPPED|WS_CAPTION|WS_SYSMENU|WS_MINIMIZEBOX,FALSE,0,GetDpiForWindow(window));
+        SetWindowPos(window,nullptr,0,0,client.right-client.left,client.bottom-client.top,SWP_NOMOVE|SWP_NOZORDER);
         scrollRange();
         refresh(); applyTheme(); SetTimer(window, 1, 33, nullptr);
     }
@@ -289,13 +313,14 @@ public:
         RECT r{}; GetClientRect(window, &r); FillRect(dc, &r, brush);
         spaced(dc, L"SCREENCAST", 24, title, 2);
         text(dc, L"Запись экрана · MP4", 30, 54, 480, 20, smallFont, palette.muted);
-        line(dc, 128); spaced(dc, L"ИСТОЧНИК ВИДЕО", 144, heading, 1);
-        line(dc, 268); spaced(dc, L"ЗВУК", 284, heading, 1);
-        text(dc, controls[OutputMode].selected == 2 ? L"Записывается выбранный процесс и его дочерние процессы." :
-            L"Микрофон и выходной звук включаются независимо.", 30, 704, 480, 18, smallFont, palette.muted);
-        line(dc, 732); spaced(dc, L"КАМЕРА И ФОН", 734, heading, 1);
-        text(dc, L"Для эффектов фона установите модель: scripts/setup-background.ps1", 30, 1030, 480, 18, smallFont, palette.muted);
-        line(dc, 1304);
+        line(dc,86);
+        text(dc,L"ИСТОЧНИК ВИДЕО",24,100,286,20,heading,palette.text);
+        text(dc,L"ЗВУК",336,100,300,20,heading,palette.text);
+        text(dc,L"КАМЕРА И ФОН",662,100,314,20,heading,palette.text);
+        text(dc,L"Перетащите кружок прямо на рабочем столе.",662,450,314,36,smallFont,palette.muted,DT_WORDBREAK);
+        text(dc,modelDownload?L"Загрузка модели…":L"Эффекты работают локально на компьютере.",662,496,314,34,smallFont,palette.muted,DT_WORDBREAK);
+        text(dc,L"ПРЕДПРОСМОТР",24,216,286,20,heading,palette.muted);
+        line(dc,540);
         auto label = status;
         if (recorder.recording()) {
             auto t = recorder.elapsed(); wchar_t duration[64]{};
@@ -303,9 +328,9 @@ public:
             label = duration;
             label+=recorder.hardware()?L" · аппаратное кодирование":L" · программное кодирование";
         }
-        text(dc, label, 30, 1308, 480, 22, smallFont, palette.muted);
+        text(dc, label, 24, 546, 952, 24, smallFont, palette.muted);
         displayed=recorder.preview();
-        RECT area{px(30),px(1064)-scroll,px(510),px(1284)-scroll}; FillRect(dc,&area,brush);
+        RECT area{px(24),px(244),px(310),px(510)}; FillRect(dc,&area,brush);
         if(displayed && !displayed->empty()) {
             float scale=std::min(float(area.right-area.left)/displayed->width,float(area.bottom-area.top)/displayed->height);
             int w=int(displayed->width*scale),h=int(displayed->height*scale);
@@ -315,7 +340,7 @@ public:
             bitmap.bmiHeader.biHeight=-displayed->height;bitmap.bmiHeader.biPlanes=1;bitmap.bmiHeader.biBitCount=32;
             SetStretchBltMode(dc,COLORONCOLOR);
             StretchDIBits(dc,x,y,w,h,0,0,displayed->width,displayed->height,displayed->bgra.data(),&bitmap,DIB_RGB_COLORS,SRCCOPY);
-        } else text(dc,L"Во время записи перетащите кружок камеры здесь",30,1150,480,40,smallFont,palette.muted,DT_CENTER|DT_WORDBREAK);
+        } else text(dc,L"Во время записи перетащите кружок камеры здесь",24,340,286,70,smallFont,palette.muted,DT_CENTER|DT_WORDBREAK);
     }
     void draw(DRAWITEMSTRUCT const& item) {
         auto found = controls.find(static_cast<int>(item.CtlID)); if (found == controls.end()) return;
@@ -354,15 +379,7 @@ public:
             int x = r.right - px(20), y = (r.top+r.bottom)/2;
             MoveToEx(dc, x-px(4), y-px(2), nullptr); LineTo(dc, x, y+px(2)); LineTo(dc, x+px(4), y-px(2));
         }
-        if (control.kind == Kind::Toggle) {
-            int x = r.right - px(42), y = (r.bottom-r.top-px(20))/2;
-            RoundRect(dc, x, y, r.right-1, y+px(20), px(20), px(20));
-            auto knob = CreateSolidBrush(control.checked ? palette.text : palette.muted);
-            auto before = SelectObject(dc, knob);
-            int kx = control.checked ? r.right-px(18) : x+px(4);
-            Ellipse(dc, kx, y+px(4), kx+px(12), y+px(16));
-            SelectObject(dc, before); DeleteObject(knob);
-        }
+        if(control.kind==Kind::Toggle) drawSwitch(dc,r.right-px(38),(r.bottom-r.top-px(20))/2,px(38),px(20),control.checked,dark);
         SelectObject(dc, oldBrush); SelectObject(dc, oldPen); DeleteObject(fill); DeleteObject(pen);
         if (item.itemState & ODS_FOCUS) { auto focus = r; InflateRect(&focus, -px(4), -px(4)); DrawFocusRect(dc, &focus); }
     }
@@ -410,6 +427,7 @@ public:
         if (path.empty()) return;
         if (_wcsicmp(std::filesystem::path(path).extension().c_str(), L".mp4")) path += L".mp4";
         settings.path = path;
+        overlay.configure(settings.target,live);
         status = L"Подключаю источники…";
         recorder.start(settings, window); enabled();
     }
@@ -430,9 +448,7 @@ public:
                 if(id==Background && picked==6 && recorder.busy() && backgroundPath.empty()) {
                     MessageBoxW(window,L"Сначала выберите своё изображение до начала записи.",L"Screencast",MB_OK);return;
                 }
-                if(id==Background && picked>1 && !std::filesystem::exists(executableDir()+L"\\models\\rvm_mobilenetv3_fp32.onnx")) {
-                    MessageBoxW(window,L"Для обработки фона запустите scripts/setup-background.ps1 в папке приложения. Модель загружается один раз.",L"Screencast",MB_OK);return;
-                }
+                if(id==Background && picked>1 && !std::filesystem::exists(executableDir()+L"\\models\\rvm_mobilenetv3_fp32.onnx")) {installModel(picked-1);return;}
                 control.selected = picked - 1; updateText(id);
                 if (id == SourceKind) sourceItems();
                 if (id == OutputMode) outputItems();
@@ -444,6 +460,7 @@ public:
         } else if (control.kind == Kind::Toggle) { setChecked(id, !control.checked); updateLive(); enabled(); }
         else if (id == Refresh) refresh();
         else if (id == BackgroundFile) {
+            if(!std::filesystem::exists(executableDir()+L"\\models\\rvm_mobilenetv3_fp32.onnx")) {installModel(1);return;}
             auto value = choose(false, L"Изображения\0*.png;*.jpg;*.jpeg;*.bmp\0\0");
             if (!value.empty()) {
                 loadImage(value); backgroundPath = value;
@@ -496,7 +513,7 @@ public:
         check(frame->WritePixels(h, w*4, w*h*4, static_cast<BYTE*>(bits))); check(frame->Commit()); check(encoder->Commit());
         SelectObject(mem, old); DeleteObject(bitmap); DeleteDC(mem); ReleaseDC(window, dc);
     }
-    ~App() { for (auto f : {font, smallFont, heading, title}) if (f) DeleteObject(f); if (brush) DeleteObject(brush); }
+    ~App() { if(modelDownload)CloseHandle(modelDownload);for (auto f : {font, smallFont, heading, title}) if (f) DeleteObject(f); if (brush) DeleteObject(brush); }
 };
 App* app{};
 LRESULT CALLBACK procedure(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam) {
@@ -541,7 +558,8 @@ LRESULT CALLBACK procedure(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam
             auto r = reinterpret_cast<RECT*>(lParam); SetWindowPos(hwnd, nullptr, r->left,r->top,r->right-r->left,r->bottom-r->top,SWP_NOZORDER); app->scrollRange(); return 0;
         }
         case WM_TIMER:
-            { RECT r{app->px(30), app->px(1060)-app->scroll, app->px(510), app->px(1332)-app->scroll}; InvalidateRect(hwnd, &r, FALSE); }
+            app->tick();
+            { RECT r{0,0,app->px(1000),app->px(640)}; InvalidateRect(hwnd, &r, FALSE); }
             if (wParam == 2) { KillTimer(hwnd, 2); app->snapshot(); DestroyWindow(hwnd); }
             return 0;
         case WM_RECORD_STATUS: {
@@ -571,7 +589,7 @@ LRESULT CALLBACK procedure(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam
 }
 }
 int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int show) {
-    int result = 1; bool mf{};
+    int result = 1; bool mf{}; ULONG_PTR gdiplus{};Gdiplus::GdiplusStartupInput graphicsStartup;Gdiplus::GdiplusStartup(&gdiplus,&graphicsStartup,nullptr);
     std::wstring diagnostics;
     try {
         winrt::init_apartment(winrt::apartment_type::single_threaded);
@@ -592,10 +610,10 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int show) {
             state.theme = args[1] == L"--snapshot-dark" ? 2 : 1; state.snapshotPath = args[2];
         }
         WNDCLASSEXW cls{sizeof(cls)}; cls.lpfnWndProc = procedure; cls.hInstance = instance;
-        cls.hCursor = LoadCursorW(nullptr, IDC_ARROW); cls.hIcon = LoadIconW(nullptr, IDI_APPLICATION);
+        cls.hCursor = LoadCursorW(nullptr, IDC_ARROW); cls.hIcon = LoadIconW(instance,MAKEINTRESOURCEW(101));cls.hIconSm=static_cast<HICON>(LoadImageW(instance,MAKEINTRESOURCEW(101),IMAGE_ICON,16,16,0));
         cls.lpszClassName = L"ScreencastWindow"; RegisterClassExW(&cls);
         auto hwnd = CreateWindowExW(0, cls.lpszClassName, L"Screencast",
-            WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX | WS_VSCROLL, CW_USEDEFAULT, CW_USEDEFAULT, 560, 900, nullptr, nullptr, instance, nullptr);
+            WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX, CW_USEDEFAULT, CW_USEDEFAULT, 1040, 700, nullptr, nullptr, instance, nullptr);
         if (!hwnd) check(HRESULT_FROM_WIN32(GetLastError()));
         ShowWindow(hwnd, show); UpdateWindow(hwnd);
         if (!state.snapshotPath.empty()) SetTimer(hwnd, 2, 1000, nullptr);
@@ -611,5 +629,5 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int show) {
         if (!diagnostics.empty()) { std::ofstream file{std::filesystem::path(diagnostics)}; file << winrt::to_string(winrt::hstring(message)); }
         else MessageBoxW(nullptr, message.c_str(), L"Screencast", MB_OK | MB_ICONERROR);
     }
-    if (mf) MFShutdown(); winrt::uninit_apartment(); return result;
+    if (mf) MFShutdown(); winrt::uninit_apartment();Gdiplus::GdiplusShutdown(gdiplus); return result;
 }
