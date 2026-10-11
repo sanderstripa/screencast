@@ -1,5 +1,6 @@
 #pragma once
 #include "camera.h"
+#include "resample.h"
 #include <windowsx.h>
 
 class CameraOverlay {
@@ -49,8 +50,8 @@ public:
         for(int y=0;y<c.diameter;++y) for(int x=0;x<c.diameter;++x) {
             float dx=x+.5f-c.diameter*.5f,dy=y+.5f-c.diameter*.5f;
             float alpha=std::clamp(c.diameter*.5f-std::sqrt(dx*dx+dy*dy),0.f,1.f);
-            int sx=ox+x*crop/c.diameter;if(mirror)sx=frame->width-1-sx;
-            auto src=frame->bgra.data()+(static_cast<size_t>(oy+y*crop/c.diameter)*frame->width+sx)*4;
+            float sx=ox+(x+.5f)*crop/c.diameter-.5f;if(mirror)sx=frame->width-1-sx;
+            auto src=sampleBgra(frame->bgra.data(),frame->width,frame->height,sx,oy+(y+.5f)*crop/c.diameter-.5f);
             auto out=static_cast<uint8_t*>(bits)+(static_cast<size_t>(y)*c.diameter+x)*4;
             for(int channel=0;channel<3;++channel) out[channel]=static_cast<uint8_t>(src[channel]*alpha);out[3]=static_cast<uint8_t>(255*alpha);
         }

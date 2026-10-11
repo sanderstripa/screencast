@@ -15,6 +15,12 @@ for name, expected in (("light", (247, 247, 245)), ("dark", (11, 11, 12))):
         assert np.max(area) - np.min(area) > 60, f"Missing text in {name} theme"
     images.append(image)
     focused=np.array(Image.open(root/f'theme-{name}-mouse-focus.png').convert('RGB'))
-    assert np.array_equal(image,focused), 'Mouse click adds an unwanted focus rectangle'
+    assert np.array_equal(image,focused), 'A focused control adds an unwanted outline'
     print(f"{name}: palette, non-empty controls and text checked")
 assert np.mean(abs(images[0].astype(float) - images[1].astype(float))) > 150
+icon=Image.open(Path('assets/Screencast.ico'))
+for size in icon.ico.sizes():
+    alpha=np.asarray(icon.ico.getimage(size).convert('RGBA'))[:,:,3]
+    y,x=np.where(alpha>128)
+    assert x.max()-x.min()+1>=size[0]*.9 and y.max()-y.min()+1>=size[1]*.88, 'Icon artwork leaves excessive transparent padding'
+print('All focused controls match unfocused rendering; icon artwork fills every ICO size')

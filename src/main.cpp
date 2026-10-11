@@ -406,10 +406,6 @@ public:
         }
         if(control.kind==Kind::Toggle) drawSwitch(dc,r.right-px(38),(r.bottom-r.top-px(20))/2,px(38),px(20),control.checked,dark);
         SelectObject(dc, oldBrush); SelectObject(dc, oldPen); DeleteObject(fill); DeleteObject(pen);
-        if ((item.itemState & ODS_FOCUS) && !(item.itemState & ODS_NOFOCUSRECT)) {
-            auto focus=r;InflateRect(&focus,-px(3),-px(3));auto focusPen=CreatePen(PS_SOLID,1,palette.muted);auto before=SelectObject(dc,focusPen);auto empty=SelectObject(dc,GetStockObject(NULL_BRUSH));
-            RoundRect(dc,focus.left,focus.top,focus.right,focus.bottom,px(16),px(16));SelectObject(dc,empty);SelectObject(dc,before);DeleteObject(focusPen);
-        }
     }
     std::wstring choose(bool save, wchar_t const* filter) {
         wchar_t buffer[32768]{};
@@ -529,7 +525,7 @@ public:
             DRAWITEMSTRUCT item{};
             item.CtlID = id; item.hwndItem = c.window; item.hDC = mem; item.itemAction = ODA_DRAWENTIRE;
             item.itemState = IsWindowEnabled(c.window) ? 0 : ODS_DISABLED;
-            if(mouseFocusSnapshot && id==ThemeSystem+theme)item.itemState|=ODS_FOCUS|ODS_NOFOCUSRECT;
+            if(mouseFocusSnapshot)item.itemState|=ODS_FOCUS;
             item.rcItem = {0,0,rect.right-rect.left,rect.bottom-rect.top};
             draw(item); RestoreDC(mem, saved);
         }

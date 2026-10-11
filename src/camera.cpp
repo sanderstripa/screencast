@@ -1,4 +1,5 @@
 #include "camera.h"
+#include "resample.h"
 #include <wincodec.h>
 #include <winrt/Windows.AI.MachineLearning.h>
 #include <winrt/Windows.Foundation.Collections.h>
@@ -39,11 +40,24 @@ Image resizeImage(Image const& input, int width, int height) {
     Image out{width, height, std::vector<uint8_t>(static_cast<size_t>(width) * height * 4)};
     out.time100ns = input.time100ns;
     for (int y = 0; y < height; ++y) for (int x = 0; x < width; ++x) {
-        int sy = y * input.height / height, sx = x * input.width / width;
-        memcpy(out.bgra.data() + (static_cast<size_t>(y) * width + x) * 4,
-            input.bgra.data() + (static_cast<size_t>(sy) * input.width + sx) * 4, 4);
+        auto value=sampleBgra(input.bgra.data(),input.width,input.height,(x+.5f)*input.width/width-.5f,(y+.5f)*input.height/height-.5f);
+        auto dest=out.bgra.data()+(static_cast<size_t>(y)*width+x)*4;for(int c=0;c<4;++c)dest[c]=static_cast<uint8_t>(std::lround(value[c]));
     }
     return out;
+}
+static Image composeMatte(Image const& source,Image const& background,std::vector<float> const& alpha,int maskWidth,int maskHeight) {
+    Image output=source;
+    float scale=std::max(float(source.width)/background.width,float(source.height)/background.height);
+    float cropW=source.width/scale,cropH=source.height/scale;
+    for(int y=0;y<source.height;++y)for(int x=0;x<source.width;++x) {
+        BilinearPoint mask(maskWidth,maskHeight,(x+.5f)*maskWidth/source.width-.5f,(y+.5f)*maskHeight/source.height-.5f);
+        float a=std::clamp(mask.sample([&](int sx,int sy){return alpha[static_cast<size_t>(sy)*maskWidth+sx];}),0.f,1.f);
+        auto bg=sampleBgra(background.bgra.data(),background.width,background.height,(background.width-cropW)/2+(x+.5f)/scale-.5f,(background.height-cropH)/2+(y+.5f)/scale-.5f);
+        auto pixel=output.bgra.data()+(static_cast<size_t>(y)*source.width+x)*4;
+        for(int c=0;c<3;++c)pixel[c]=static_cast<uint8_t>(std::lround(pixel[c]*a+bg[c]*(1-a)));
+        pixel[3]=255;
+    }
+    return output;
 }
 void compositeCamera(Image& screen, Image const& camera, int corner) {
     compositeCamera(screen, camera, Point{float(corner % 2), float(corner / 2)});
@@ -70,9 +84,9 @@ void compositeCamera(Image& screen, Image const& camera, Point position, bool mi
     for (int y = 0; y < diameter; ++y) for (int x = 0; x < diameter; ++x) {
         float edge = coverage[static_cast<size_t>(y)*diameter+x];
         if (edge == 0) continue;
-        int sx = cropX + x * crop / diameter, sy = cropY + y * crop / diameter;
+        float sx=cropX+(x+.5f)*crop/diameter-.5f,sy=cropY+(y+.5f)*crop/diameter-.5f;
         if(mirror)sx=camera.width-1-sx;
-        auto src = camera.bgra.data() + (static_cast<size_t>(sy) * camera.width + sx) * 4;
+        auto src=sampleBgra(camera.bgra.data(),camera.width,camera.height,sx,sy);
         auto dest = screen.bgra.data() + (static_cast<size_t>(top + y) * screen.width + left + x) * 4;
         for (int c = 0; c < 3; ++c) dest[c] = static_cast<uint8_t>(src[c] * edge + dest[c] * (1 - edge));
         dest[3] = 255;
@@ -190,29 +204,13 @@ struct Camera::State {
         binding.Bind(L"downsample_ratio", TensorFloat::CreateFromArray({1}, std::array<float, 1>{1.f}));
         auto result = session.Evaluate(binding, L"camera");
         auto alpha = result.Outputs().Lookup(L"pha").as<TensorFloat>().GetAsVectorView();
-        auto fg = result.Outputs().Lookup(L"fgr").as<TensorFloat>().GetAsVectorView();
         const wchar_t* outputs[]{L"r1o", L"r2o", L"r3o", L"r4o"};
         for (int i = 0; i < 4; ++i) recurrent[i] = result.Outputs().Lookup(outputs[i]).as<TensorFloat>();
-        if (alpha.Size() != plane || fg.Size() != plane * 3)
+        if (alpha.Size() != plane)
             throw winrt::hresult_error(E_FAIL, L"Модель фона вернула неожиданный размер изображения");
-        std::vector<float> alphaValues(plane), foregroundValues(plane*3);
-        alpha.GetMany(0,alphaValues); fg.GetMany(0,foregroundValues);
-        // Center-crop background, retaining its aspect ratio.
-        float scale = std::max(256.f / background.width, static_cast<float>(h) / background.height);
-        float cropW = 256 / scale, cropH = h / scale;
-        for (int y = 0; y < h; ++y) for (int x = 0; x < 256; ++x) {
-            size_t i = static_cast<size_t>(y) * 256 + x;
-            float a = std::clamp(alphaValues[i], 0.f, 1.f);
-            int bx = std::clamp(static_cast<int>((background.width - cropW) / 2 + x / scale), 0, background.width - 1);
-            int by = std::clamp(static_cast<int>((background.height - cropH) / 2 + y / scale), 0, background.height - 1);
-            auto bg = background.bgra.data() + (static_cast<size_t>(by) * background.width + bx) * 4;
-            for (int c = 0; c < 3; ++c) {
-                float foreground = std::clamp(foregroundValues[(2-c)*plane+i], 0.f, 1.f) * 255;
-                imageSmall.bgra[i * 4 + c] = static_cast<uint8_t>(foreground * a + bg[c] * (1 - a));
-            }
-            imageSmall.bgra[i * 4 + 3] = 255;
-        }
-        return imageSmall;
+        std::vector<float> alphaValues(plane);alpha.GetMany(0,alphaValues);
+        // Upsample only the silhouette; preserve the camera's original color/detail.
+        return composeMatte(source,background,alphaValues,256,h);
     }
 };
 class Camera::Callback final : public Microsoft::WRL::RuntimeClass<
@@ -281,7 +279,7 @@ Camera::Camera(Settings const& settings) : state_(std::make_shared<State>()) {
     check(MFCreateSourceReaderFromMediaSource(source_.Get(), readerAttributes.Get(), &reader_));
     check(reader_->SetStreamSelection(MF_SOURCE_READER_ALL_STREAMS, FALSE));
     check(reader_->SetStreamSelection(MF_SOURCE_READER_FIRST_VIDEO_STREAM, TRUE));
-    // Choose a modest native frame size; do not force a format unsupported by the camera.
+    // Prefer 720p/30; select an actual supported mode rather than forcing a format.
     ComPtr<IMFMediaType> chosen;
     uint64_t score = UINT64_MAX;
     for (DWORD i = 0; ; ++i) {
@@ -290,7 +288,7 @@ Camera::Camera(Settings const& settings) : state_(std::make_shared<State>()) {
         UINT32 w{}, h{}; if (FAILED(MFGetAttributeSize(type.Get(), MF_MT_FRAME_SIZE, &w, &h))) continue;
         UINT32 numerator{}, denominator{}; MFGetAttributeRatio(type.Get(), MF_MT_FRAME_RATE, &numerator, &denominator);
         double fps = denominator ? double(numerator)/denominator : 0;
-        auto candidate = static_cast<uint64_t>(std::abs(static_cast<int>(w)-640)+std::abs(static_cast<int>(h)-480) + std::abs(fps-30)*100);
+        auto candidate = static_cast<uint64_t>(std::abs(static_cast<int>(w)-1280)+std::abs(static_cast<int>(h)-720) + std::abs(fps-30)*200);
         if (candidate < score) { chosen = type; score = candidate; }
     }
     if (chosen) check(reader_->SetCurrentMediaType(MF_SOURCE_READER_FIRST_VIDEO_STREAM, nullptr, chosen.Get()));
@@ -353,9 +351,13 @@ void Camera::testModel() {
         state.background.bgra[i+2] = 20; state.background.bgra[i+3] = 255;
     }
     Image source{320, 240, std::vector<uint8_t>(320 * 240 * 4, 110)};
+    Image detail{1280,720,std::vector<uint8_t>(1280*720*4)};
+    for(int y=0;y<720;++y)for(int x=0;x<1280;++x){auto p=detail.bgra.data()+(y*1280+x)*4;p[0]=p[1]=p[2]=uint8_t((x%2)*255);p[3]=255;}
+    auto retained=composeMatte(detail,state.background,std::vector<float>(256*144,1.f),256,144);
+    if(retained.bgra!=detail.bgra)throw winrt::hresult_error(E_FAIL,L"Обработка фона потеряла исходные детали камеры");
     for (int frame = 0; frame < 2; ++frame) {
         auto result = state.matting(source);
-        if (result.width != 256 || result.height != 192 || result.bgra.size() != 256 * 192 * 4)
+        if (result.width != source.width || result.height != source.height || result.bgra.size() != source.bgra.size())
             throw winrt::hresult_error(E_FAIL, L"Неверный размер кадра после замены фона");
         bool changed{};
         for (size_t i = 0; i < result.bgra.size(); i += 4) {

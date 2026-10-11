@@ -2,12 +2,18 @@
 #include "../src/spectral.h"
 #include "../src/motion.h"
 #include "../src/live_capture.h"
+#include "../src/resample.h"
 #include <iostream>
 #include <stdexcept>
 
 void require(bool condition, char const* message) { if (!condition) throw std::runtime_error(message); }
 int main() {
     try {
+        std::array<uint8_t,16> pixels{0,0,0,255,100,100,100,255,200,200,200,255,240,240,240,255};
+        auto center=sampleBgra(pixels.data(),2,2,.5f,.5f);
+        require(std::abs(center[0]-135)<.01f,"resizing still uses nearest-neighbor pixels");
+        require(sampleBgra(pixels.data(),2,2,-1,-1)[0]==0,"sampling outside top-left is unsafe");
+        require(sampleBgra(pixels.data(),2,2,9,9)[0]==240,"sampling outside bottom-right is unsafe");
         int opened{},closed{};
         struct Device {int& closed;explicit Device(int& counter):closed(counter){}~Device(){++closed;}};
         std::unique_ptr<Device> capture;auto create=[&]{++opened;return std::make_unique<Device>(closed);};
