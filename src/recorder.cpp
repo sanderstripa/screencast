@@ -361,7 +361,7 @@ int cameraSelfTest(std::wstring const& directory) {
         auto changedAt=clock100ns(),warmupDeadline=changedAt+100000000;
         while(clock100ns()<warmupDeadline) {
             auto frame=camera.latestFrame();
-            if(frame && frame->time100ns>=changedAt) break;
+            if(frame && frame->time100ns>=changedAt && (mode==BackgroundMode::Original || frame->width==256)) break;
             std::this_thread::sleep_for(std::chrono::milliseconds(5));
         }
         log<<L"mode="<<int(mode)<<L" warmup_ms="<<double(clock100ns()-changedAt)/10000<<L"\n";
