@@ -357,6 +357,14 @@ int cameraSelfTest(std::wstring const& directory) {
     for(auto mode:{BackgroundMode::Original,BackgroundMode::Blur,BackgroundMode::Solid,BackgroundMode::Gradient,BackgroundMode::Interior}) {
         if(mode!=BackgroundMode::Original && !std::filesystem::exists(executableDir()+L"\\models\\rvm_mobilenetv3_fp32.onnx")) continue;
         settings.live->background=mode;
+        // Exclude one-time GPU/model initialization from the steady-state rate.
+        auto changedAt=clock100ns(),warmupDeadline=changedAt+100000000;
+        while(clock100ns()<warmupDeadline) {
+            auto frame=camera.latestFrame();
+            if(frame && frame->time100ns>=changedAt) break;
+            std::this_thread::sleep_for(std::chrono::milliseconds(5));
+        }
+        log<<L"mode="<<int(mode)<<L" warmup_ms="<<double(clock100ns()-changedAt)/10000<<L"\n";
         auto until=clock100ns()+30000000;int count{};int64_t previous{};
         while(clock100ns()<until) {
             auto frame=camera.latestFrame();if(frame && frame->time100ns!=previous) {previous=frame->time100ns;++count;}
