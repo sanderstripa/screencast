@@ -1,7 +1,7 @@
 # Verification status — desktop overlay and native installer
 
-Verified executable source: 6c00120, 2026-10-11.
-[Windows CI run 38112019435](https://github.com/sanderstripa/screencast/actions/runs/38112019435): SUCCESS.
+Verified executable source: 44dc007, 2026-10-11.
+[Windows CI run 38114511712](https://github.com/sanderstripa/screencast/actions/runs/38114511712): SUCCESS.
 
 Automated checks passed:
 - Independent system/microphone gain and mute; packet alignment, silence and saturation.
@@ -20,3 +20,5 @@ Physical-camera and encoder checks were run locally. Detailed hardware diagnosti
 Long recordings, subjective speech/noise quality, person/hair segmentation, 4K/HDR, device removal and all monitor/process-audio combinations still require acceptance in tests/MANUAL.md. They are not claimed as passed.
 
 The application download button was tested locally with the model absent: model and license downloaded, SHA256 matched, and blur mode became selected. The final installer also passed isolated extraction/removal locally (exit 0).
+
+Version 0.2.1: the visible production window had zero idle parent repaints over two seconds, both in Windows CI and locally on Windows 11. Buffered presentation and child clipping prevent parent/background overdraw. Installer snapshots cover active/inactive shortcut switches, centered completion checkbox, absence of duplicate launch and completion Cancel, and no native caption. Final isolated installer extraction/removal passed locally (exit 0).
