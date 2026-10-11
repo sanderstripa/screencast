@@ -264,8 +264,8 @@ public:
         add(ThemeSystem,Kind::Segment,L"Система",610,30,112,30);
         add(ThemeLight,Kind::Segment,L"Светлая",730,30,112,30);
         add(ThemeDark,Kind::Segment,L"Тёмная",850,30,126,30);
-        add(SourceKind,Kind::Choice,L"Источник",24,128,194,34);setItems(SourceKind,{L"Запись экрана",L"Отдельное окно"});
-        add(Refresh,Kind::Button,L"Обновить",226,128,84,34);
+        add(SourceKind,Kind::Choice,L"Источник",24,128,178,34);setItems(SourceKind,{L"Запись экрана",L"Отдельное окно"});
+        add(Refresh,Kind::Button,L"Обновить",214,128,96,34);
         add(Source,Kind::Choice,L"Экран / окно",24,172,286,34);
         add(OutputMode,Kind::Choice,L"Выходной звук",336,128,300,34);setItems(OutputMode,{L"Звук выключен",L"Системный звук",L"Звук приложения / процесса"});controls[OutputMode].selected=1;
         add(OutputDevice,Kind::Choice,L"Устройство выхода",336,172,300,34);
@@ -303,17 +303,19 @@ public:
     }
     void spaced(HDC dc, std::wstring const& value, int y, HFONT face, int spacing) {
         SelectObject(dc, face); SetTextColor(dc, palette.text); SetBkMode(dc, TRANSPARENT);
-        int x = px(30);
+        int x = px(76);
         for (wchar_t c : value) { SIZE size{}; GetTextExtentPoint32W(dc, &c, 1, &size); TextOutW(dc, x, px(y)-scroll, &c, 1); x += size.cx + px(spacing); }
     }
     void line(HDC dc, int y) {
         auto pen = CreatePen(PS_SOLID, 1, palette.line); auto old = SelectObject(dc, pen);
-        MoveToEx(dc, px(30), px(y)-scroll, nullptr); LineTo(dc, px(510), px(y)-scroll); SelectObject(dc, old); DeleteObject(pen);
+        MoveToEx(dc, px(24), px(y)-scroll, nullptr); LineTo(dc, px(976), px(y)-scroll); SelectObject(dc, old); DeleteObject(pen);
     }
     void paint(HDC dc) {
         RECT r{}; GetClientRect(window, &r); FillRect(dc, &r, brush);
         spaced(dc, L"SCREENCAST", 24, title, 2);
-        text(dc, L"Запись экрана · MP4", 30, 54, 480, 20, smallFont, palette.muted);
+        auto icon=static_cast<HICON>(LoadImageW(GetModuleHandleW(nullptr),MAKEINTRESOURCEW(101),IMAGE_ICON,px(40),px(40),0));
+        DrawIconEx(dc,px(24),px(22),icon,px(40),px(40),0,nullptr,DI_NORMAL);DestroyIcon(icon);
+        text(dc, L"Запись экрана · MP4", 76, 54, 480, 20, smallFont, palette.muted);
         line(dc,86);
         text(dc,L"ИСТОЧНИК ВИДЕО",24,100,286,20,heading,palette.text);
         text(dc,L"ЗВУК",336,100,300,20,heading,palette.text);
@@ -341,7 +343,7 @@ public:
             bitmap.bmiHeader.biHeight=-displayed->height;bitmap.bmiHeader.biPlanes=1;bitmap.bmiHeader.biBitCount=32;
             SetStretchBltMode(dc,COLORONCOLOR);
             StretchDIBits(dc,x,y,w,h,0,0,displayed->width,displayed->height,displayed->bgra.data(),&bitmap,DIB_RGB_COLORS,SRCCOPY);
-        } else text(dc,L"Во время записи перетащите кружок камеры здесь",24,340,286,70,smallFont,palette.muted,DT_CENTER|DT_WORDBREAK);
+        } else text(dc,L"Предпросмотр появится после начала записи",24,340,286,70,smallFont,palette.muted,DT_CENTER|DT_WORDBREAK);
     }
     void draw(DRAWITEMSTRUCT const& item) {
         auto found = controls.find(static_cast<int>(item.CtlID)); if (found == controls.end()) return;

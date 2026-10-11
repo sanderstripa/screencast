@@ -30,6 +30,11 @@ std::filesystem::path safeDestination(std::wstring const& text) {
     if(path==path.root_path() || path==std::filesystem::path(folder(FOLDERID_Profile))) throw winrt::hresult_error(E_INVALIDARG,L"Выберите отдельную папку приложения / Select a dedicated application folder");
     if(std::filesystem::exists(path) && !std::filesystem::is_empty(path) && !std::filesystem::exists(path/L"Screencast.exe"))
         throw winrt::hresult_error(E_INVALIDARG,L"Папка содержит другие файлы. Выберите новую папку / Folder contains other files. Select a new folder");
+    if(std::filesystem::exists(path)) {
+        if(GetFileAttributesW(path.c_str())&FILE_ATTRIBUTE_REPARSE_POINT) throw std::runtime_error("Installation folder must not be a link");
+        for(auto const& entry:std::filesystem::recursive_directory_iterator(path))
+            if(GetFileAttributesW(entry.path().c_str())&FILE_ATTRIBUTE_REPARSE_POINT)throw std::runtime_error("Installation folder contains a link");
+    }
     return path;
 }
 void extract(std::filesystem::path const& destination) {
@@ -53,7 +58,11 @@ void uninstallFiles(std::filesystem::path const& destination) {
         line=entry;
         auto relative=std::filesystem::path(line).lexically_normal();
         if(relative.is_absolute() || relative.empty() || *relative.begin()==L"..") throw std::runtime_error("Unsafe installation manifest");
-        auto path=destination/relative;std::error_code error;std::filesystem::remove(path,error);
+        auto path=destination/relative;
+        auto root=std::filesystem::weakly_canonical(destination),resolved=std::filesystem::weakly_canonical(path);
+        auto mismatch=std::mismatch(root.begin(),root.end(),resolved.begin(),resolved.end());
+        if(mismatch.first!=root.end())throw std::runtime_error("Manifest resolves outside the application folder");
+        std::error_code error;std::filesystem::remove(path,error);
         for(auto dir=path.parent_path();dir!=destination && dir.has_relative_path();dir=dir.parent_path())directories.insert(dir);
     }
     for(auto name:{L"models/rvm_mobilenetv3_fp32.onnx",L"models/RVM-LICENSE.txt",L"models/rvm_mobilenetv3_fp32.onnx.download",L"installed-files.txt"}) {std::error_code error;std::filesystem::remove(destination/name,error);}
@@ -126,7 +135,7 @@ public:
     }
     void draw(DRAWITEMSTRUCT const& item) {
         auto dc=item.hDC;RECT r=item.rcItem;FillRect(dc,&r,background);int id=int(item.CtlID);
-        if(id==2){drawSwitch(dc,4,4,38,20,dark,dark);return;}
+        if(id==2){drawSwitch(dc,4,4,38,20,!dark,dark);return;}
         if(id>=5 && id<=7) {
             bool checked=id==5?desktop:id==6?startMenu:launch;drawSwitch(dc,0,5,38,20,checked,dark);r.left=52;
             text(dc,id==5?tr(L"Создать ярлык на рабочем столе",L"Create a desktop shortcut"):id==6?tr(L"Создать ярлык в меню «Пуск»",L"Create a Start menu shortcut"):tr(L"Запустить Screencast после установки",L"Launch Screencast after installation"),r,font);return;
@@ -188,6 +197,15 @@ int WINAPI wWinMain(HINSTANCE instance,HINSTANCE,PWSTR,int show) {
                 uninstallFiles(executableDir());RegDeleteTreeW(HKEY_CURRENT_USER,L"Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Screencast");
                 std::error_code error;std::filesystem::remove(folder(FOLDERID_Desktop)+L"\\Screencast.lnk",error);auto group=std::filesystem::path(folder(FOLDERID_Programs))/L"Screencast";
                 std::filesystem::remove(group/L"Screencast.lnk",error);std::filesystem::remove(group/L"Uninstall.lnk",error);std::filesystem::remove(group,error);
+                // Remove the running uninstaller after this process exits; never recurse into user data.
+                auto self=std::filesystem::path(filename);
+                if(self.filename()==L"Screencast-Uninstall.exe") {
+                    auto command=L"powershell.exe -NoProfile -NonInteractive -Command \"Wait-Process -Id "+std::to_wstring(GetCurrentProcessId())+
+                        L" -ErrorAction SilentlyContinue; Remove-Item -LiteralPath "+quotedPS(self.wstring())+L" -Force; if (-not (Get-ChildItem -LiteralPath "+quotedPS(self.parent_path().wstring())+
+                        L" -Force)) { Remove-Item -LiteralPath "+quotedPS(self.parent_path().wstring())+L" }\"";
+                    STARTUPINFOW startup{sizeof(startup)};startup.dwFlags=STARTF_USESHOWWINDOW;startup.wShowWindow=SW_HIDE;PROCESS_INFORMATION process{};
+                    if(CreateProcessW(nullptr,command.data(),nullptr,nullptr,FALSE,CREATE_NO_WINDOW,nullptr,nullptr,&startup,&process)){CloseHandle(process.hThread);CloseHandle(process.hProcess);}
+                }
             }return 0;
         }
         // Extract only the private font for the wizard, never install it into Windows.
