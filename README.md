@@ -1,63 +1,100 @@
-# Screencast
+<p align="center">
+  <img src="assets/Screencast-2048.png" width="128" height="128" alt="Screencast icon">
+</p>
 
-Компактное нативное приложение записи экрана для Windows 11 x64. C++20 / Win32; MP4 (H.264 + необязательный AAC). Интерфейс на русском: Montserrat, светлая, тёмная и системная темы по предоставленным образцам. Все настройки помещаются в одном окне без прокрутки.
+<h1 align="center">Screencast</h1>
 
-## Сборка и запуск
+<p align="center">A compact, native screen recorder for Windows 11.</p>
 
-Требуются Visual Studio 2022 / Build Tools с компонентом «Разработка классических приложений на C++», Windows SDK 10.0.22000 или новее и CMake 3.24+. Windows 11 x64, включая N-редакции с установленным Media Feature Pack.
+<p align="center">
+  <a href="https://github.com/sanderstripa/screencast/releases/latest">Download</a> ·
+  <a href="https://github.com/sanderstripa/screencast/issues">Report an issue</a> ·
+  <a href="VALIDATION.md">Validation</a>
+</p>
 
-```powershell
-./scripts/build.ps1
-./dist/Screencast/Screencast.exe
-```
+Screencast records a monitor or an individual window to MP4, with independent system audio and microphone controls. Add a movable webcam circle, adjust noise suppression, and change your camera background without leaving the recording window.
 
-В [релизах](https://github.com/sanderstripa/screencast/releases) доступны `Screencast-Setup-x64.exe` и переносимый архив `Screencast-Windows-x64.zip`. Нативный установщик с полностью собственной шапкой устанавливает приложение для текущего пользователя, создаёт выбранные ярлыки и средство удаления. Включённые функциональные тумблеры синие, выключенные серые. Кнопка RU/EN меняет язык всех экранов; рядом находится переключатель светлой/тёмной темы. Запуск приложения выбирается только на последнем экране, галочкой по центру. Для переносимой версии распакуйте архив целиком и запустите `Screencast.exe`.
+Built with **C++20 and Win32**, using Windows capture, audio and encoding APIs. The core application does not require an external runtime.
 
-## Использование
+## Features
 
-1. Выберите «Запись экрана» и нужный монитор или «Запись отдельного окна» и окно. «Обновить» перечитывает источники и устройства.
-2. Выберите выходной звук: выключен, весь системный звук или звук выбранного приложения/процесса. В следующем списке выберите устройство выхода либо приложение. Выбор звука независим от источника видео: можно записывать весь экран со звуком одного приложения.
-3. Включите либо выключите микрофон независимо, в том числе прямо во время записи. Отдельные шкалы системного звука и микрофона регулируются от 0 до 200% до и во время записи. При необходимости включите программное шумоподавление и настройте его интенсивность (0–100%). Если подключён микрофон, MP4 заранее содержит аудиодорожку для его последующего включения; при выключенных источниках на ней тишина.
-4. Веб-камеру можно включать и выключать во время записи, даже если запись начата без неё. Выберите начальный угол; переключатель «Зеркало» меняет обычное изображение на зеркальное и обратно прямо во время записи. Перетаскивайте кружок на рабочем столе либо выбирайте другой угол: движение плавно переносится в MP4. Кружок виден и в снимках экрана. Для записи отдельного окна камера дополнительно накладывается на кадры этого окна. Выключенные камера и микрофон освобождаются; выбранные устройства сохраняются до конца записи.
-5. Для эффектов камеры нажмите «Загрузить эффекты фона (15 МБ)» или выберите нужный эффект: модель загрузится автоматически один раз. При ошибке загрузку можно повторить той же кнопкой. Доступны размытие реального фона с регулировкой силы, четыре спокойных однотонных цвета, четыре градиента, три нейтральных интерьера и собственное изображение. Модель отделяет человека; эффект записывается в видео. Режим и готовый фон можно менять во время записи; собственный файл выбирается заранее.
-6. Выберите новый файл MP4 и нажмите «Начать запись». Повторное нажатие завершает файл; закрытие приложения во время записи тоже сначала завершает MP4.
+- **Monitor and window capture.** Choose any detected monitor or an individual window.
+- **Independent audio sources.** Record system audio, audio from a selected application/process, microphone audio, or a combination. System and microphone volume sliders range from 0 to 200%.
+- **Live recording controls.** Turn the microphone and webcam on or off during recording. Switch between mirrored and ordinary camera orientation without restarting.
+- **Movable webcam circle.** Start in any of the four corners, then drag the circle on the desktop. Its movement is reflected smoothly in the recording; it also appears in screenshots.
+- **Adjustable software noise suppression.** Enable it for the microphone and set its intensity from 0 to 100%.
+- **Camera background effects.** Blur the real background or choose a solid color, gradient, neutral interior, or your own image. Effects run locally using an optional foreground model.
+- **MP4 output.** H.264 video with optional AAC audio. Hardware encoding is preferred when available, with a software fallback.
+- **Light, dark and system themes.** A compact interface with Montserrat typography and no vertical scrolling.
+- **One application instance.** Launching Screencast again restores the existing window.
 
-Файлы с существующими именами не перезаписываются. Во время записи используется файл с уникальным суффиксом `.partial.mp4`; после успешного завершения он переименовывается. При ошибке приложение пытается сохранить доступную часть и показывает путь. При внезапном отключении питания обычный MP4 может остаться незавершенным.
+The application interface is currently in **Russian**. The installer supports **Russian and English**, with light and dark themes.
 
-## Дополнительная модель замены фона
+## Download and install
 
-Основной способ — кнопка загрузки в приложении. При необходимости модель можно установить вручную из распакованной переносимой версии:
+Get the latest version from [GitHub Releases](https://github.com/sanderstripa/screencast/releases/latest):
+
+| File | Use |
+| --- | --- |
+| `Screencast-Setup-x64.exe` | Install for the current user, with optional desktop and Start menu shortcuts and an uninstaller. Administrator privileges are not required. |
+| `Screencast-Windows-x64.zip` | Portable version. Extract the entire archive and run `Screencast.exe`. Keep the accompanying assets and scripts. |
+
+**Requirements:** Windows 11 x64. Windows N editions need the Media Feature Pack. A microphone and webcam are optional.
+
+## Record your screen
+
+1. Choose a monitor or window. Use **Refresh** to update the list of sources and devices.
+2. Select no output audio, system audio, or audio from an application/process. Audio selection is independent of the video source.
+3. Enable the microphone if needed, set the two volume sliders, and adjust noise suppression.
+4. Optionally enable the webcam, choose its corner and mirror setting, and select a background effect.
+5. Choose an MP4 destination and start recording. The preview appears once recording starts. You can toggle the microphone and webcam, adjust volume, change mirroring, and move the webcam circle while recording.
+6. Stop recording to finalize the MP4. Closing the application also finalizes an active recording first.
+
+Existing files are not overwritten. Recording uses a unique `.partial.mp4` file, which is renamed after successful finalization. If recording fails, Screencast attempts to preserve the available portion and reports its location. A sudden power loss can leave an MP4 unfinished.
+
+## Optional camera background model
+
+Use the download button in the application to install the background effects model once, approximately **15 MB**. A failed download can be retried from the same button.
+
+Alternatively, run this command from the extracted portable application folder:
 
 ```powershell
 ./scripts/setup-background.ps1
 ```
 
-Из исходников после сборки:
+For an application built from source:
 
 ```powershell
 ./scripts/setup-background.ps1 -AppDirectory ./dist/Screencast
 ```
 
-Модель RVM загружается отдельно, чтобы базовая поставка оставалась компактной. Инференс работает локально через Windows ML: кадры никуда не отправляются. Предпочитается GPU, при невозможности создать GPU-сессию используется CPU. Обработка выполняется в отдельном потоке с одним ожидающим кадром: устаревшие кадры заменяются свежими, очередь задержек не растет. Камера предпочитает поддерживаемый режим около 1280×720 / 30 кадров/с. Для модели уменьшается только вход определения силуэта; изображение человека сохраняет исходное разрешение камеры. Масштабирование кружка и предпросмотра использует билинейную интерполяцию. Частота кадров зависит от оборудования. Лицензия модели — GPL-3.0; см. THIRD_PARTY.md.
+The [Robust Video Matting](https://github.com/PeterL1n/RobustVideoMatting) model runs locally through Windows ML; camera frames are not uploaded. GPU inference is preferred, with a CPU fallback. Performance depends on the hardware. The model is downloaded separately and is licensed under GPL-3.0; see [Third-party components](THIRD_PARTY.md).
 
-## Честные ограничения первой версии
+## Build from source
 
-- Захват окна через Windows Graphics Capture работает независимо от перекрывающих окон; свернутое окно может перестать обновлять кадры. Приложение повторяет последний доступный кадр. Защищенное содержимое/DRM может быть черным — защиты не обходятся.
-- Изоляция аудио относится к процессу и его дочерним процессам, а не к конкретной вкладке браузера. Чтобы записывать только один источник, открывайте его в отдельном приложении/экземпляре с независимым деревом процессов. Режим процесса не заменяется системным звуком при ошибке.
-- При завершении аудиопроцесса, закрытии источника, ошибке устройства или диска запись завершается с сообщением. Смену устройств по умолчанию во время записи не подхватываем автоматически: начните новую запись.
-- Программное шумоподавление использует спектральную оценку шума и перекрывающиеся окна FFT. Интенсивность действительно изменяет ослабление спектра; 0% и выключенный режим дают исходный сигнал. Лучше работает с постоянным шумом вентилятора/шипением; резкие звуки клавиатуры и фоновые голоса могут сохраняться. Это не нейросетевой шумодав. Аппаратная обработка зависит от устройства и настраивается средствами производителя/Windows; универсального аппаратного переключателя в приложении пока нет.
-- Исходный размер кадра фиксирует размер MP4 (до ближайшего четного пикселя). При изменении окна используются черные поля с сохранением пропорций. Видео 30 кадров/с, SDR. HDR и запись более 4K требуют отдельной проверки; первичная версия копирует кадры на CPU и преобразует в NV12.
-- Темы сохранены в `HKCU/Software/Screencast/Theme`. Остальные настройки пока не сохраняются.
-- Управление аппаратным шумодавом, горячие клавиши и подробные настройки кодирования — дальнейшие улучшения.
+Install **Visual Studio 2022 or Build Tools** with the Desktop development with C++ workload, **Windows SDK 10.0.22000 or newer**, and **CMake 3.24 or newer**. Use a developer PowerShell session with the MSVC toolchain available.
 
-## Проверки
+```powershell
+git clone https://github.com/sanderstripa/screencast.git
+cd screencast
+./scripts/build.ps1
+./dist/Screencast/Screencast.exe
+```
 
-CI действительно собирает C++, проверяет временное выравнивание аудио, независимое включение источников, ограничение пиков и ослабление слабого шума. Встроенный `--self-test <каталог>` создает три трехсекундных MP4 через настоящий Media Foundation: со стереозвуком 440/660 Гц и без аудиодорожки. PyAV независимо декодирует все кадры, проверяет длительность, временные метки, разрешение, изменение размера источника, кодеки и частоты звука. Дополнительный MP4 проверяется на наличие кружка с первого кадра и плавное перемещение между углами. Еще одна запись измеряет композицию и кодирование 1080p (performance.txt). Это проверка кодирования, а не подтверждение работы физических устройств. Для камеры есть --camera-test <каталог>: проверяет первый кадр и частоту выдачи по режимам, сохраняет только численные сведения, без фото/видео пользователя.
+The build script compiles the application, runs the core tests, and packages the portable version. The [Windows workflow](.github/workflows/windows.yml) also builds the native installer and publishes tagged releases.
 
-Аппаратные сценарии записаны в `tests/MANUAL.md`. Они не должны считаться пройденными только потому, что сборка CI зеленая. Состояние проверок и ссылки на результаты ведутся в `VALIDATION.md`.
+## Current limitations
 
-Выпадающие списки используют Montserrat и палитру приложения: скруглённая рамка, выделение строки и отметка текущего выбора. Стрелки/Home/End/Page Up/Page Down перемещают выбор, Enter подтверждает, Escape или клик снаружи закрывает список; длинные списки прокручиваются колесом. Обработка сообщений записи продолжается при открытом списке. Иконка увеличена целиком до границ изображения без изменения композиции элементов; Windows получает размер значка с учётом DPI.
+- Video is recorded at **30 FPS in SDR**. Output dimensions are fixed when recording starts; window resizing preserves aspect ratio with black padding. HDR and resolutions above 4K require further validation.
+- A minimized capture window may stop producing new frames. Protected content can appear black.
+- Application audio capture includes a process and its child processes, rather than an individual browser tab. Use a separate application or process tree to isolate a source.
+- Selected devices remain fixed during a recording. Default-device changes are not picked up automatically; start a new recording to change devices. Source closure, audio-process exit, and device or disk failures end recording with a message.
+- Software noise suppression works best on steady fan noise and hiss. Keyboard impacts and background voices may remain. Hardware microphone processing is configured through Windows or the device manufacturer's tools.
+- Built-in background effects can be changed during recording; a custom image must be chosen beforehand.
+- The theme is saved between sessions. Other settings are not yet persisted. Hotkeys and detailed encoding controls are not yet available.
 
-Повторный запуск с ярлыка или напрямую возвращает к существующему окну и восстанавливает его, если оно свёрнуто. Одновременные запуски также используют один экземпляр. Иконка приложения загружается так же, как у установщика; все запросы значка получают полноценный размер. Установщик обновляет ссылки на отдельный файл иконки в ярлыках рабочего стола, меню «Пуск» и удаления, с несколькими разрешениями и неизменной композицией.
+## Validation and project notes
 
-Иконка отрисовывается из контуров отдельно для 22 размеров (16–256 пикселей), без размывающего уменьшения большого растра. Композиция сохранена. В комплекте также есть исходник 2048×2048 и SVG. Установщик обновляет версионный файл иконки в ярлыках.
+Automated Windows checks cover audio mixing and suppression, decoded MP4 output, webcam composition and live toggles, foreground matting, themes and dropdowns, installer behavior, icon extraction, and repeated launches. Synthetic checks do not replace testing with physical devices.
+
+See [validation results](VALIDATION.md), [manual test scenarios](tests/MANUAL.md), and [third-party components and licensing notes](THIRD_PARTY.md). The application does not yet have a declared distribution license.
