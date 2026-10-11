@@ -19,8 +19,8 @@ class CameraOverlay {
         if(m==WM_LBUTTONDOWN) {self->dragging_=true;self->offset_={GET_X_LPARAM(l),GET_Y_LPARAM(l)};SetCapture(h);return 0;}
         if(m==WM_MOUSEMOVE && self->dragging_) {
             POINT p{};GetCursorPos(&p);auto r=self->bounds();auto c=circlePlacement(r.right-r.left,r.bottom-r.top,{0,0});
-            self->live_->cameraX=std::clamp(float(p.x-self->offset_.x-r.left-c.margin)/std::max(1,r.right-r.left-c.diameter-2*c.margin),0.f,1.f);
-            self->live_->cameraY=std::clamp(float(p.y-self->offset_.y-r.top-c.margin)/std::max(1,r.bottom-r.top-c.diameter-2*c.margin),0.f,1.f);return 0;
+            self->live_->cameraX=std::clamp(float(p.x-self->offset_.x-r.left-c.margin)/std::max<long>(1,r.right-r.left-c.diameter-2*c.margin),0.f,1.f);
+            self->live_->cameraY=std::clamp(float(p.y-self->offset_.y-r.top-c.margin)/std::max<long>(1,r.bottom-r.top-c.diameter-2*c.margin),0.f,1.f);return 0;
         }
         if(m==WM_LBUTTONUP) {self->dragging_=false;ReleaseCapture();return 0;}
         if(m==WM_CAPTURECHANGED) {self->dragging_=false;return 0;}

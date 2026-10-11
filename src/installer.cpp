@@ -7,6 +7,7 @@
 #include <fstream>
 #include <set>
 #include <map>
+#include <wincodec.h>
 
 namespace {
 constexpr UINT Completed=WM_APP+20;
@@ -63,6 +64,23 @@ public:
     HWND window{},pathEdit{};bool english{},dark{},desktop{true},startMenu{true},launch{true};int stage{};
     HFONT font{},heading{},smallFont{};HBRUSH background{};std::wstring path,error;
     std::thread worker;std::atomic<int> progress{};std::map<int,HWND> buttons;
+    std::wstring snapshotPath;
+    void snapshot() {
+        HDC screen=GetDC(window),dc=CreateCompatibleDC(screen);BITMAPINFO info{};info.bmiHeader.biSize=sizeof(BITMAPINFOHEADER);info.bmiHeader.biWidth=680;info.bmiHeader.biHeight=-484;info.bmiHeader.biPlanes=1;info.bmiHeader.biBitCount=32;
+        void* bits{};auto bitmap=CreateDIBSection(screen,&info,DIB_RGB_COLORS,&bits,nullptr,0);auto old=SelectObject(dc,bitmap);paint(dc);
+        for(auto [id,b]:buttons) if(GetWindowLongPtrW(b,GWL_STYLE)&WS_VISIBLE) {
+            RECT r{};GetWindowRect(b,&r);MapWindowPoints(nullptr,window,reinterpret_cast<POINT*>(&r),2);auto saved=SaveDC(dc);SetViewportOrgEx(dc,r.left,r.top,nullptr);
+            DRAWITEMSTRUCT item{};item.CtlID=id;item.hDC=dc;item.rcItem={0,0,r.right-r.left,r.bottom-r.top};draw(item);RestoreDC(dc,saved);
+        }
+        if(stage==1)text(dc,path,{44,234,524,262},font);
+        for(size_t i=3;i<680*484*4;i+=4)static_cast<BYTE*>(bits)[i]=255;
+        ComPtr<IWICImagingFactory> factory;check(CoCreateInstance(CLSID_WICImagingFactory,nullptr,CLSCTX_INPROC_SERVER,IID_PPV_ARGS(&factory)));
+        ComPtr<IWICStream> stream;check(factory->CreateStream(&stream));check(stream->InitializeFromFilename(snapshotPath.c_str(),GENERIC_WRITE));
+        ComPtr<IWICBitmapEncoder> encoder;check(factory->CreateEncoder(GUID_ContainerFormatPng,nullptr,&encoder));check(encoder->Initialize(stream.Get(),WICBitmapEncoderNoCache));
+        ComPtr<IWICBitmapFrameEncode> frame;check(encoder->CreateNewFrame(&frame,nullptr));check(frame->Initialize(nullptr));check(frame->SetSize(680,484));auto format=GUID_WICPixelFormat32bppBGRA;check(frame->SetPixelFormat(&format));
+        check(frame->WritePixels(484,680*4,680*484*4,static_cast<BYTE*>(bits)));check(frame->Commit());check(encoder->Commit());
+        SelectObject(dc,old);DeleteObject(bitmap);DeleteDC(dc);ReleaseDC(window,screen);
+    }
     std::wstring tr(wchar_t const* ru,wchar_t const* en) const {return english?en:ru;}
     COLORREF bg()const{return dark?RGB(11,11,12):RGB(247,247,245);}COLORREF fg()const{return dark?RGB(237,237,235):RGB(16,24,36);}
     void theme() {if(background)DeleteObject(background);background=CreateSolidBrush(bg());BOOL d=dark;DwmSetWindowAttribute(window,DWMWA_USE_IMMERSIVE_DARK_MODE,&d,sizeof(d));InvalidateRect(window,nullptr,TRUE);for(auto [id,b]:buttons)InvalidateRect(b,nullptr,TRUE);if(pathEdit)InvalidateRect(pathEdit,nullptr,TRUE);}
@@ -150,7 +168,7 @@ LRESULT CALLBACK proc(HWND h,UINT m,WPARAM w,LPARAM l) {
         if(m==WM_PAINT){PAINTSTRUCT p{};auto dc=BeginPaint(h,&p);setup->paint(dc);EndPaint(h,&p);return 0;}
         if(m==WM_ERASEBKGND)return 1;
         if(m==WM_CTLCOLOREDIT){SetTextColor(reinterpret_cast<HDC>(w),setup->fg());SetBkColor(reinterpret_cast<HDC>(w),setup->bg());return reinterpret_cast<LRESULT>(setup->background);}
-        if(m==WM_TIMER){if(setup->stage==2)InvalidateRect(h,nullptr,FALSE);return 0;}
+        if(m==WM_TIMER){if(w==2){KillTimer(h,2);setup->snapshot();DestroyWindow(h);return 0;}if(setup->stage==2)InvalidateRect(h,nullptr,FALSE);return 0;}
         if(m==Completed){if(setup->worker.joinable())setup->worker.join();if(w)setup->stage=3;else {setup->stage=1;MessageBoxW(h,setup->error.c_str(),L"Screencast",MB_OK|MB_ICONERROR);}setup->rebuild();return 0;}
         if(m==WM_CLOSE){if(setup->stage!=2)DestroyWindow(h);return 0;}
         if(m==WM_DESTROY){PostQuitMessage(0);return 0;}
@@ -161,7 +179,7 @@ LRESULT CALLBACK proc(HWND h,UINT m,WPARAM w,LPARAM l) {
 int WINAPI wWinMain(HINSTANCE instance,HINSTANCE,PWSTR,int show) {
     ULONG_PTR graphics{};Gdiplus::GdiplusStartupInput input;Gdiplus::GdiplusStartup(&graphics,&input,nullptr);
     try {
-        winrt::init_apartment();int count{};auto args=CommandLineToArgvW(GetCommandLineW(),&count);
+        winrt::init_apartment();int count{};auto args=CommandLineToArgvW(GetCommandLineW(),&count);std::vector<std::wstring> parameters;for(int i=0;i<count;++i)parameters.emplace_back(args[i]);
         if(count>=3 && std::wstring(args[1])==L"--install-test") {auto destination=safeDestination(args[2]);extract(destination);uninstallFiles(destination);LocalFree(args);return 0;}
         wchar_t filename[32768]{};GetModuleFileNameW(nullptr,filename,32768);
         bool uninstall=(count>=2 && std::wstring(args[1])==L"--uninstall") || std::filesystem::path(filename).filename()==L"Screencast-Uninstall.exe";LocalFree(args);
@@ -175,9 +193,12 @@ int WINAPI wWinMain(HINSTANCE instance,HINSTANCE,PWSTR,int show) {
         // Extract only the private font for the wizard, never install it into Windows.
         auto fontResource=FindResourceW(instance,MAKEINTRESOURCEW(202),RT_RCDATA);DWORD size=SizeofResource(instance,fontResource);
         auto data=LockResource(LoadResource(instance,fontResource));DWORD fonts{};auto privateFont=AddFontMemResourceEx(data,size,nullptr,&fonts);
-        Setup state;setup=&state;WNDCLASSEXW cls{sizeof(cls)};cls.lpfnWndProc=proc;cls.hInstance=instance;cls.hCursor=LoadCursorW(nullptr,IDC_ARROW);cls.hIcon=LoadIconW(instance,MAKEINTRESOURCEW(101));cls.hIconSm=cls.hIcon;cls.lpszClassName=L"ScreencastSetup";RegisterClassExW(&cls);
+        Setup state;
+        if(parameters.size()>=3 && parameters[1].starts_with(L"--snapshot-")) {state.english=parameters[1].find(L"-en-")!=std::wstring::npos;state.dark=parameters[1].ends_with(L"-dark");state.snapshotPath=parameters[2];if(parameters.size()>=4)state.stage=std::stoi(parameters[3]);state.progress=68;}
+        setup=&state;WNDCLASSEXW cls{sizeof(cls)};cls.lpfnWndProc=proc;cls.hInstance=instance;cls.hCursor=LoadCursorW(nullptr,IDC_ARROW);cls.hIcon=LoadIconW(instance,MAKEINTRESOURCEW(101));cls.hIconSm=cls.hIcon;cls.lpszClassName=L"ScreencastSetup";RegisterClassExW(&cls);
         RECT rect{0,0,680,484};AdjustWindowRect(&rect,WS_OVERLAPPED|WS_CAPTION|WS_SYSMENU|WS_MINIMIZEBOX,FALSE);
         auto window=CreateWindowW(cls.lpszClassName,L"Screencast",WS_OVERLAPPED|WS_CAPTION|WS_SYSMENU|WS_MINIMIZEBOX,CW_USEDEFAULT,CW_USEDEFAULT,rect.right-rect.left,rect.bottom-rect.top,nullptr,nullptr,instance,nullptr);ShowWindow(window,show);
+        if(!state.snapshotPath.empty())SetTimer(window,2,200,nullptr);
         MSG message{};while(GetMessageW(&message,nullptr,0,0)>0){if(!IsDialogMessageW(window,&message)){TranslateMessage(&message);DispatchMessageW(&message);}}
         if(privateFont)RemoveFontMemResourceEx(privateFont);
     }catch(...){MessageBoxW(nullptr,errorText().c_str(),L"Screencast",MB_OK|MB_ICONERROR);return 1;}

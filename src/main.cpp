@@ -16,6 +16,7 @@
 
 int encoderSelfTest(std::wstring const& directory);
 int cameraSelfTest(std::wstring const& directory);
+int overlaySelfTest(std::wstring const& directory);
 namespace {
 enum Id { SourceKind = 100, Source, Refresh, OutputMode, OutputDevice, Microphone, MicDevice,
     Denoise, Webcam, CameraDevice, Corner, Background, BackgroundFile, Save, Start, ThemeSystem, ThemeLight, ThemeDark,
@@ -285,7 +286,7 @@ public:
         add(Save,Kind::Button,L"Куда сохранить MP4…",24,580,250,38);
         add(Start,Kind::Button,L"Начать запись",726,580,250,38);
         MONITORINFO monitor{sizeof(monitor)};GetMonitorInfoW(MonitorFromWindow(window,MONITOR_DEFAULTTONEAREST),&monitor);
-        dpi=std::min(dpi,std::min((monitor.rcWork.right-monitor.rcWork.left-20)*96/1000,(monitor.rcWork.bottom-monitor.rcWork.top-50)*96/640));
+        dpi=std::min<int>(dpi,std::min<long>((monitor.rcWork.right-monitor.rcWork.left-20)*96/1000,(monitor.rcWork.bottom-monitor.rcWork.top-50)*96/640));
         fonts();
         // Rescale children if a small desktop cannot fit the preferred system scale.
         int originalDpi=GetDpiForWindow(window);
@@ -596,10 +597,11 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int show) {
         check(MFStartup(MF_VERSION)); mf = true;
         int argc{}; auto argv = CommandLineToArgvW(GetCommandLineW(), &argc);
         std::vector<std::wstring> args; for (int i = 0; i < argc; ++i) args.emplace_back(argv[i]); LocalFree(argv);
-        if (args.size() >= 3 && (args[1] == L"--self-test" || args[1] == L"--model-test" || args[1]==L"--camera-test")) {
+        if (args.size() >= 3 && (args[1] == L"--self-test" || args[1] == L"--model-test" || args[1]==L"--camera-test" || args[1]==L"--overlay-test")) {
             std::filesystem::create_directories(args[2]); diagnostics = args[2] + L"\\test-error.txt";
             if (args[1] == L"--self-test") result = encoderSelfTest(args[2]);
             else if(args[1]==L"--camera-test") result=cameraSelfTest(args[2]);
+            else if(args[1]==L"--overlay-test") result=overlaySelfTest(args[2]);
             else { Camera::testModel(); result = 0; }
             MFShutdown(); winrt::uninit_apartment(); return result;
         }

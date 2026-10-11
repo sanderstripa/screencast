@@ -8,6 +8,7 @@
 #include <d3d11.h>
 #include <fstream>
 #include <mftransform.h>
+#include "overlay.h"
 
 namespace {
 class Writer {
@@ -386,4 +387,30 @@ int cameraSelfTest(std::wstring const& directory) {
         log<<L"mode="<<int(mode)<<L" delivered_fps="<<count/3.0<<L" "<<camera.diagnostics()<<L"\n";log.flush();
     }
     return 0;
+}
+int overlaySelfTest(std::wstring const& directory) {
+    Target target;target.monitor=MonitorFromPoint(POINT{0,0},MONITOR_DEFAULTTOPRIMARY);
+    MONITORINFO info{sizeof(info)};check(GetMonitorInfoW(target.monitor,&info)?S_OK:E_FAIL);
+    auto live=std::make_shared<LiveSettings>();live->cameraX=0;live->cameraY=0;
+    auto camera=std::make_shared<Image>(Image{128,128,std::vector<uint8_t>(128*128*4)});
+    for(size_t i=0;i<camera->bgra.size();i+=4){camera->bgra[i]=10;camera->bgra[i+1]=20;camera->bgra[i+2]=245;camera->bgra[i+3]=255;}
+    CameraOverlay overlay;overlay.configure(target,live);overlay.update(camera);
+    auto c=circlePlacement(info.rcMonitor.right-info.rcMonitor.left,info.rcMonitor.bottom-info.rcMonitor.top,{0,0});
+    int x=c.left+c.diameter/2,y=c.top+c.diameter/2;
+    std::this_thread::sleep_for(std::chrono::milliseconds(150));
+    HDC desktop=GetDC(nullptr),memory=CreateCompatibleDC(desktop);auto bitmap=CreateCompatibleBitmap(desktop,1,1);auto old=SelectObject(memory,bitmap);
+    check(BitBlt(memory,0,0,1,1,desktop,info.rcMonitor.left+x,info.rcMonitor.top+y,SRCCOPY|CAPTUREBLT)?S_OK:E_FAIL);
+    auto color=GetPixel(memory,0,0);SelectObject(memory,old);DeleteObject(bitmap);DeleteDC(memory);ReleaseDC(nullptr,desktop);
+    if(GetRValue(color)<180 || GetGValue(color)>80) throw winrt::hresult_error(E_FAIL,L"Кружок не виден на снимке рабочего стола");
+    Capture capture(target);Image screen;auto until=clock100ns()+50000000;
+    do {if(capture.next(screen) && screen.time100ns>=live->overlayReady.load())break;std::this_thread::sleep_for(std::chrono::milliseconds(5));}while(clock100ns()<until);
+    if(screen.empty()) throw winrt::hresult_error(E_FAIL,L"Нет кадра для проверки кружка");
+    auto pixel=screen.bgra.data()+(static_cast<size_t>(y)*screen.width+x)*4;
+    if(pixel[2]<180 || pixel[1]>80) throw winrt::hresult_error(E_FAIL,L"Кружок не попал в захват монитора");
+    // Store only a synthetic red crop. Personal desktop contents never enter the artifact.
+    Image crop{64,64,std::vector<uint8_t>(64*64*4)};
+    for(int row=0;row<64;++row)memcpy(crop.bgra.data()+row*64*4,screen.bgra.data()+(static_cast<size_t>(y-32+row)*screen.width+x-32)*4,64*4);
+    Writer writer(directory+L"\\desktop-overlay.mp4",64,64,30,false);for(int frame=0;frame<30;++frame)writer.video(crop,frame);writer.finalize();
+    std::ofstream log{std::filesystem::path(directory)/L"desktop-overlay.txt"};log<<"Layered circle visible in desktop screenshot and Windows Graphics Capture. Encoded synthetic-only crop.\n";
+    overlay.hide();return 0;
 }
