@@ -129,6 +129,7 @@ private:
         if(SUCCEEDED(sink.As(&extended))) for(DWORD i=0;i<8;++i) {
             GUID category{};ComPtr<IMFTransform> transform;
             if(FAILED(extended->GetTransformForStream(videoStream,i,&category,&transform))) break;
+            if(category!=MFT_CATEGORY_VIDEO_ENCODER) continue;
             ComPtr<IMFAttributes> attributes;
             if(SUCCEEDED(transform->GetAttributes(&attributes))) {
                 UINT length{};
@@ -331,14 +332,17 @@ int encoderSelfTest(std::wstring const& directory) {
     std::wofstream performance{std::filesystem::path(directory)/L"performance.txt"};
     Writer benchmark(directory+L"\\benchmark-1080p.mp4",1920,1080,30,false);
     Image screen{1920,1080,std::vector<uint8_t>(1920*1080*4,40)};
-    int64_t total{},maximum{};
+    int64_t total{},maximum{},benchmarkStart=clock100ns();
     for(int i=0;i<90;++i) {
-        auto begin=clock100ns();compositeCamera(screen,camera,Point{float(i)/89,1});benchmark.video(screen,i);
+        auto begin=clock100ns();std::fill(screen.bgra.begin(),screen.bgra.end(),40);
+        compositeCamera(screen,camera,Point{float(i)/89,1});benchmark.video(screen,i);
         auto elapsed=clock100ns()-begin;total+=elapsed;maximum=std::max(maximum,elapsed);
     }
     benchmark.finalize();
+    auto wall=clock100ns()-benchmarkStart;
     performance<<L"1080p camera composition + encode, 90 frames\nmean_frame_ms="<<double(total)/900000
-        <<L"\nmax_frame_ms="<<double(maximum)/10000<<L"\nhardware_encoder="<<benchmark.hardware()<<L"\n";
+        <<L"\nmax_frame_ms="<<double(maximum)/10000<<L"\nwall_seconds_including_finalize="<<double(wall)/10000000
+        <<L"\nencoded_fps="<<900000000.0/wall<<L"\nhardware_encoder="<<benchmark.hardware()<<L"\n";
     auto blurred=blurImage(camera,12);
     if(blurred.bgra!=camera.bgra) throw winrt::hresult_error(E_FAIL,L"Размытие изменило однотонное изображение");
     return 0;
