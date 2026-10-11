@@ -41,7 +41,7 @@ Image resizeImage(Image const& input, int width, int height) {
     out.time100ns = input.time100ns;
     for (int y = 0; y < height; ++y) for (int x = 0; x < width; ++x) {
         auto value=sampleBgra(input.bgra.data(),input.width,input.height,(x+.5f)*input.width/width-.5f,(y+.5f)*input.height/height-.5f);
-        auto dest=out.bgra.data()+(static_cast<size_t>(y)*width+x)*4;for(int c=0;c<4;++c)dest[c]=static_cast<uint8_t>(std::lround(value[c]));
+        auto dest=out.bgra.data()+(static_cast<size_t>(y)*width+x)*4;for(int c=0;c<4;++c)dest[c]=static_cast<uint8_t>(value[c]+.5f);
     }
     return out;
 }
@@ -54,7 +54,7 @@ static Image composeMatte(Image const& source,Image const& background,std::vecto
         float a=std::clamp(mask.sample([&](int sx,int sy){return alpha[static_cast<size_t>(sy)*maskWidth+sx];}),0.f,1.f);
         auto bg=sampleBgra(background.bgra.data(),background.width,background.height,(background.width-cropW)/2+(x+.5f)/scale-.5f,(background.height-cropH)/2+(y+.5f)/scale-.5f);
         auto pixel=output.bgra.data()+(static_cast<size_t>(y)*source.width+x)*4;
-        for(int c=0;c<3;++c)pixel[c]=static_cast<uint8_t>(std::lround(pixel[c]*a+bg[c]*(1-a)));
+        for(int c=0;c<3;++c)pixel[c]=static_cast<uint8_t>(pixel[c]*a+bg[c]*(1-a)+.5f);
         pixel[3]=255;
     }
     return output;
