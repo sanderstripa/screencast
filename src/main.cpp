@@ -13,6 +13,7 @@
 #include <windowsx.h>
 #include "overlay.h"
 #include "switch.h"
+#include "paint.h"
 
 int encoderSelfTest(std::wstring const& directory);
 int cameraSelfTest(std::wstring const& directory);
@@ -41,6 +42,7 @@ public:
     Recorder recorder;
     CameraOverlay overlay;
     HANDLE modelDownload{};int pendingBackground{};
+    ULONGLONG lastStatusPaint{};
     void installModel(int mode) {
         pendingBackground=mode;if(modelDownload)return;
         auto script=executableDir()+L"\\scripts\\setup-background.ps1";
@@ -52,6 +54,11 @@ public:
     }
     void tick() {
         overlay.update(recorder.busy()?recorder.webcam():nullptr);
+        if(recorder.busy()) {
+            RECT preview{px(24),px(244),px(310),px(510)};InvalidateRect(window,&preview,FALSE);
+            auto now=GetTickCount64();
+            if(now-lastStatusPaint>=1000) {lastStatusPaint=now;RECT statusRect{px(24),px(546),px(976),px(570)};InvalidateRect(window,&statusRect,FALSE);}
+        }
         if(modelDownload && WaitForSingleObject(modelDownload,0)==WAIT_OBJECT_0) {
             DWORD code{};GetExitCodeProcess(modelDownload,&code);CloseHandle(modelDownload);modelDownload=nullptr;
             if(code==0 && std::filesystem::exists(executableDir()+L"\\models\\rvm_mobilenetv3_fp32.onnx")) {
@@ -62,11 +69,17 @@ public:
     }
     std::wstring path, backgroundPath, lastFile, status{L"Готов к записи"};
     std::wstring snapshotPath;
+    std::wstring idleTestPath;int idleTestPhase{},idlePaints{};
     Palette palette{};
     std::shared_ptr<LiveSettings> live=std::make_shared<LiveSettings>();
     bool dragging{}; Point dragOffset{};
     RECT previewRect{};
     std::shared_ptr<Image const> displayed;
+    static LRESULT CALLBACK controlProcedure(HWND hwnd,UINT message,WPARAM wp,LPARAM lp,UINT_PTR,DWORD_PTR) {
+        if(message==WM_ERASEBKGND)return 1;
+        if(message==WM_NCDESTROY)RemoveWindowSubclass(hwnd,controlProcedure,2);
+        return DefSubclassProc(hwnd,message,wp,lp);
+    }
     static LRESULT CALLBACK sliderProcedure(HWND hwnd,UINT message,WPARAM wp,LPARAM lp,UINT_PTR,DWORD_PTR data) {
         auto self=reinterpret_cast<App*>(data); int id=GetDlgCtrlID(hwnd); auto& c=self->controls.at(id);
         if(message==WM_LBUTTONDOWN || (message==WM_MOUSEMOVE && GetCapture()==hwnd)) {
@@ -157,6 +170,7 @@ public:
         auto hwnd = CreateWindowExW(0, L"BUTTON", label.c_str(), WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_OWNERDRAW | BS_NOTIFY,
             px(x), px(y), px(w), px(h), window, reinterpret_cast<HMENU>(static_cast<INT_PTR>(id)), GetModuleHandleW(nullptr), nullptr);
         controls[id] = {hwnd, kind, label};
+          SetWindowSubclass(hwnd,controlProcedure,2,0);
         if(kind==Kind::Slider) SetWindowSubclass(hwnd,sliderProcedure,1,reinterpret_cast<DWORD_PTR>(this));
     }
     void setItems(int id, std::vector<std::wstring> items) {
@@ -546,8 +560,8 @@ LRESULT CALLBACK procedure(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam
         case WM_MOUSEMOVE: if(app->dragging) app->dragCamera(GET_X_LPARAM(lParam),GET_Y_LPARAM(lParam),false);return 0;
         case WM_LBUTTONUP: if(app->dragging) {app->dragging=false;ReleaseCapture();}return 0;
         case WM_CAPTURECHANGED: app->dragging=false;return 0;
-        case WM_DRAWITEM: app->draw(*reinterpret_cast<DRAWITEMSTRUCT*>(lParam)); return TRUE;
-        case WM_PAINT: { PAINTSTRUCT ps{}; auto dc = BeginPaint(hwnd, &ps); app->paint(dc); EndPaint(hwnd, &ps); return 0; }
+        case WM_DRAWITEM: {auto item=*reinterpret_cast<DRAWITEMSTRUCT*>(lParam);bufferedPaint(item.hDC,item.rcItem,[&](HDC back){item.hDC=back;app->draw(item);});return TRUE;}
+        case WM_PAINT: {if(app->idleTestPhase==1)++app->idlePaints; PAINTSTRUCT ps{}; auto dc = BeginPaint(hwnd, &ps);RECT rect{};GetClientRect(hwnd,&rect);bufferedPaint(dc,rect,[](HDC back){app->paint(back);}); EndPaint(hwnd, &ps); return 0; }
         case WM_ERASEBKGND: return 1;
         case WM_SETTINGCHANGE: if (!app->theme) app->applyTheme(); return 0;
         case WM_DPICHANGED: {
@@ -561,8 +575,14 @@ LRESULT CALLBACK procedure(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam
             auto r = reinterpret_cast<RECT*>(lParam); SetWindowPos(hwnd, nullptr, r->left,r->top,r->right-r->left,r->bottom-r->top,SWP_NOZORDER); app->scrollRange(); return 0;
         }
         case WM_TIMER:
+            if(wParam==3) {
+                if(app->idleTestPhase==0){app->idleTestPhase=1;app->idlePaints=0;SetTimer(hwnd,3,2000,nullptr);return 0;}
+                KillTimer(hwnd,3);std::filesystem::create_directories(app->idleTestPath);
+                bool passed=IsWindowVisible(hwnd) && app->idlePaints<=1 && (GetWindowLongPtrW(hwnd,GWL_STYLE)&WS_CLIPCHILDREN);
+                std::ofstream report(std::filesystem::path(app->idleTestPath)/L"idle-paint.txt");report<<"Idle parent repaints over 2 seconds: "<<app->idlePaints<<"\nChild clipping enabled; visible production window tested.\n"<<(passed?"PASS":"FAIL")<<'\n';report.close();
+                DestroyWindow(hwnd);PostQuitMessage(passed?0:1);return 0;
+            }
             app->tick();
-            { RECT r{0,0,app->px(1000),app->px(640)}; InvalidateRect(hwnd, &r, FALSE); }
             if (wParam == 2) { KillTimer(hwnd, 2); app->snapshot(); DestroyWindow(hwnd); }
             return 0;
         case WM_RECORD_STATUS: {
@@ -608,6 +628,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int show) {
             MFShutdown(); winrt::uninit_apartment(); return result;
         }
         App state; app = &state; state.readTheme();
+        if(args.size()>=3 && args[1]==L"--idle-paint-test"){state.idleTestPath=args[2];state.theme=2;show=SW_SHOWNOACTIVATE;}
         auto fontPath = executableDir() + L"\\assets\\Montserrat.ttf";
         AddFontResourceExW(fontPath.c_str(), FR_PRIVATE, nullptr);
         if (args.size() >= 3 && (args[1] == L"--snapshot-light" || args[1] == L"--snapshot-dark")) {
@@ -617,10 +638,11 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int show) {
         cls.hCursor = LoadCursorW(nullptr, IDC_ARROW); cls.hIcon = LoadIconW(instance,MAKEINTRESOURCEW(101));cls.hIconSm=static_cast<HICON>(LoadImageW(instance,MAKEINTRESOURCEW(101),IMAGE_ICON,16,16,0));
         cls.lpszClassName = L"ScreencastWindow"; RegisterClassExW(&cls);
         auto hwnd = CreateWindowExW(0, cls.lpszClassName, L"Screencast",
-            WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX, CW_USEDEFAULT, CW_USEDEFAULT, 1040, 700, nullptr, nullptr, instance, nullptr);
+            WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX | WS_CLIPCHILDREN, CW_USEDEFAULT, CW_USEDEFAULT, 1040, 700, nullptr, nullptr, instance, nullptr);
         if (!hwnd) check(HRESULT_FROM_WIN32(GetLastError()));
         ShowWindow(hwnd, show); UpdateWindow(hwnd);
         if (!state.snapshotPath.empty()) SetTimer(hwnd, 2, 1000, nullptr);
+        if(!state.idleTestPath.empty())SetTimer(hwnd,3,1000,nullptr);
         MSG message{}; int value{};
         while ((value = GetMessageW(&message, nullptr, 0, 0)) > 0) {
             if (!IsDialogMessageW(hwnd, &message)) { TranslateMessage(&message); DispatchMessageW(&message); }

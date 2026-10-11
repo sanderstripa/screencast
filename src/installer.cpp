@@ -1,5 +1,7 @@
 #include "common.h"
 #include "switch.h"
+#include "paint.h"
+#include <windowsx.h>
 #include <commdlg.h>
 #include <shellapi.h>
 #include <shlobj.h>
@@ -101,14 +103,15 @@ public:
         font=make(14,FW_NORMAL);heading=make(30,FW_NORMAL);smallFont=make(12,FW_NORMAL);
         path=folder(FOLDERID_LocalAppData)+L"\\Programs\\Screencast";
         add(1,20,436,54,28);add(2,88,436,48,28);add(3,396,430,120,38);add(4,528,430,132,38);
-        add(5,36,288,588,30);add(6,36,324,588,30);add(7,36,360,588,30);add(8,534,230,90,34);
-        pathEdit=CreateWindowExW(0,L"EDIT",path.c_str(),WS_CHILD|WS_TABSTOP|ES_AUTOHSCROLL,44,234,480,28,window,reinterpret_cast<HMENU>(9),GetModuleHandleW(nullptr),nullptr);SendMessageW(pathEdit,WM_SETFONT,reinterpret_cast<WPARAM>(font),TRUE);
+        add(5,36,288,588,30);add(6,36,324,588,30);add(7,46,322,588,30);add(8,534,232,90,34);
+        add(10,590,8,36,30);add(11,634,8,36,30);
+        pathEdit=CreateWindowExW(0,L"EDIT",path.c_str(),WS_CHILD|WS_TABSTOP|ES_AUTOHSCROLL,44,241,480,18,window,reinterpret_cast<HMENU>(9),GetModuleHandleW(nullptr),nullptr);SendMessageW(pathEdit,WM_SETFONT,reinterpret_cast<WPARAM>(font),TRUE);
         rebuild();theme();SetTimer(window,1,100,nullptr);
     }
     void rebuild() {
         for(int id:{5,6,8})ShowWindow(buttons[id],stage==1?SW_SHOW:SW_HIDE);
-        ShowWindow(pathEdit,stage==1?SW_SHOW:SW_HIDE);ShowWindow(buttons[7],stage==1||stage==3?SW_SHOW:SW_HIDE);
-        if(stage==3)SetWindowPos(buttons[7],nullptr,36,322,588,30,SWP_NOZORDER);else SetWindowPos(buttons[7],nullptr,36,360,588,30,SWP_NOZORDER);
+        ShowWindow(pathEdit,stage==1?SW_SHOW:SW_HIDE);ShowWindow(buttons[7],stage==3?SW_SHOW:SW_HIDE);
+        ShowWindow(buttons[3],stage==3?SW_HIDE:SW_SHOW);
         EnableWindow(buttons[3],stage!=2);EnableWindow(buttons[4],stage!=2);
         InvalidateRect(window,nullptr,TRUE);for(auto [id,b]:buttons)InvalidateRect(b,nullptr,TRUE);
     }
@@ -135,9 +138,24 @@ public:
     }
     void draw(DRAWITEMSTRUCT const& item) {
         auto dc=item.hDC;RECT r=item.rcItem;FillRect(dc,&r,background);int id=int(item.CtlID);
-        if(id==2){drawSwitch(dc,4,4,38,20,!dark,dark);return;}
+        if(id==2){drawSwitch(dc,4,4,38,20,!dark,dark,false);return;}
+        if(id==10 || id==11) {
+            auto pen=CreatePen(PS_SOLID,1,fg());auto old=SelectObject(dc,pen);
+            if(id==10){MoveToEx(dc,12,15,nullptr);LineTo(dc,24,15);}
+            else {MoveToEx(dc,13,10,nullptr);LineTo(dc,23,20);MoveToEx(dc,23,10,nullptr);LineTo(dc,13,20);}
+            SelectObject(dc,old);DeleteObject(pen);return;
+        }
         if(id>=5 && id<=7) {
-            bool checked=id==5?desktop:id==6?startMenu:launch;drawSwitch(dc,0,5,38,20,checked,dark);r.left=52;
+            if(id==7) {
+                auto label=tr(L"Запустить Screencast после установки",L"Launch Screencast after installation");SelectObject(dc,font);SIZE size{};GetTextExtentPoint32W(dc,label.c_str(),int(label.size()),&size);
+                int x=(r.right-size.cx-30)/2;
+                Gdiplus::Graphics graphics(dc);graphics.SetSmoothingMode(Gdiplus::SmoothingModeAntiAlias);
+                Gdiplus::Pen outline(Gdiplus::Color(255,140,144,151),1);
+                if(launch){Gdiplus::SolidBrush fill(Gdiplus::Color(255,24,135,230));graphics.FillEllipse(&fill,x,5,20,20);Gdiplus::Pen checkmark(Gdiplus::Color(255,255,255,255),2);graphics.DrawLine(&checkmark,x+5,15,x+9,19);graphics.DrawLine(&checkmark,x+9,19,x+15,11);}
+                else graphics.DrawEllipse(&outline,x,5,20,20);
+                r.left=x+30;text(dc,label,r,font);return;
+            }
+            bool checked=id==5?desktop:startMenu;drawSwitch(dc,0,5,38,20,checked,dark);r.left=52;
             text(dc,id==5?tr(L"Создать ярлык на рабочем столе",L"Create a desktop shortcut"):id==6?tr(L"Создать ярлык в меню «Пуск»",L"Create a Start menu shortcut"):tr(L"Запустить Screencast после установки",L"Launch Screencast after installation"),r,font);return;
         }
         std::wstring label=id==1?(english?L"EN":L"RU"):id==3?tr(L"Отмена",L"Cancel"):id==8?tr(L"Обзор…",L"Browse…"):stage==0?tr(L"Далее",L"Next"):stage==1?tr(L"Установить",L"Install"):stage==2?tr(L"Установка…",L"Installing…"):tr(L"Готово",L"Finish");
@@ -154,12 +172,14 @@ public:
                 if(startMenu) {auto group=std::filesystem::path(folder(FOLDERID_Programs))/L"Screencast";std::filesystem::create_directories(group);shortcut((group/L"Screencast.lnk").wstring(),app);shortcut((group/L"Uninstall.lnk").wstring(),(destination/L"Screencast-Uninstall.exe").wstring()+L"");}
                 HKEY key{};check(HRESULT_FROM_WIN32(RegCreateKeyExW(HKEY_CURRENT_USER,L"Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Screencast",0,nullptr,0,KEY_SET_VALUE,nullptr,&key,nullptr)));
                 auto put=[&](wchar_t const* name,std::wstring const& value){RegSetValueExW(key,name,0,REG_SZ,reinterpret_cast<BYTE const*>(value.c_str()),DWORD((value.size()+1)*2));};
-                put(L"DisplayName",L"Screencast");put(L"DisplayVersion",L"0.2.0");put(L"InstallLocation",path);put(L"DisplayIcon",app);put(L"UninstallString",L"\""+(destination/L"Screencast-Uninstall.exe").wstring()+L"\" --uninstall");RegCloseKey(key);
+                put(L"DisplayName",L"Screencast");put(L"DisplayVersion",L"0.2.1");put(L"InstallLocation",path);put(L"DisplayIcon",app);put(L"UninstallString",L"\""+(destination/L"Screencast-Uninstall.exe").wstring()+L"\" --uninstall");RegCloseKey(key);
                 progress=100;winrt::uninit_apartment();PostMessageW(window,Completed,1,0);
             }catch(...){error=errorText();PostMessageW(window,Completed,0,0);}
         });
     }
     void command(int id) {
+        if(id==10){ShowWindow(window,SW_MINIMIZE);return;}
+        if(id==11){SendMessageW(window,WM_CLOSE,0,0);return;}
         if(id==1){english=!english;rebuild();return;}if(id==2){dark=!dark;theme();return;}
         if(id==3){if(stage!=2)DestroyWindow(window);return;}
         if(id>=5 && id<=7){if(id==5)desktop=!desktop;else if(id==6)startMenu=!startMenu;else launch=!launch;InvalidateRect(buttons[id],nullptr,TRUE);return;}
@@ -173,8 +193,9 @@ LRESULT CALLBACK proc(HWND h,UINT m,WPARAM w,LPARAM l) {
     try {
         if(m==WM_CREATE){setup->window=h;setup->create();return 0;}
         if(m==WM_COMMAND){setup->command(LOWORD(w));return 0;}
-        if(m==WM_DRAWITEM){setup->draw(*reinterpret_cast<DRAWITEMSTRUCT*>(l));return TRUE;}
-        if(m==WM_PAINT){PAINTSTRUCT p{};auto dc=BeginPaint(h,&p);setup->paint(dc);EndPaint(h,&p);return 0;}
+        if(m==WM_DRAWITEM){auto item=*reinterpret_cast<DRAWITEMSTRUCT*>(l);bufferedPaint(item.hDC,item.rcItem,[&](HDC back){item.hDC=back;setup->draw(item);});return TRUE;}
+        if(m==WM_PAINT){PAINTSTRUCT p{};auto dc=BeginPaint(h,&p);RECT rect{};GetClientRect(h,&rect);bufferedPaint(dc,rect,[](HDC back){setup->paint(back);});EndPaint(h,&p);return 0;}
+        if(m==WM_NCHITTEST){auto hit=DefWindowProcW(h,m,w,l);POINT point{GET_X_LPARAM(l),GET_Y_LPARAM(l)};ScreenToClient(h,&point);if(hit==HTCLIENT && point.y<40 && point.x<580)return HTCAPTION;return hit;}
         if(m==WM_ERASEBKGND)return 1;
         if(m==WM_CTLCOLOREDIT){SetTextColor(reinterpret_cast<HDC>(w),setup->fg());SetBkColor(reinterpret_cast<HDC>(w),setup->bg());return reinterpret_cast<LRESULT>(setup->background);}
         if(m==WM_TIMER){if(w==2){KillTimer(h,2);setup->snapshot();DestroyWindow(h);return 0;}if(setup->stage==2)InvalidateRect(h,nullptr,FALSE);return 0;}
@@ -212,10 +233,12 @@ int WINAPI wWinMain(HINSTANCE instance,HINSTANCE,PWSTR,int show) {
         auto fontResource=FindResourceW(instance,MAKEINTRESOURCEW(202),RT_RCDATA);DWORD size=SizeofResource(instance,fontResource);
         auto data=LockResource(LoadResource(instance,fontResource));DWORD fonts{};auto privateFont=AddFontMemResourceEx(data,size,nullptr,&fonts);
         Setup state;
-        if(parameters.size()>=3 && parameters[1].starts_with(L"--snapshot-")) {state.english=parameters[1].find(L"-en-")!=std::wstring::npos;state.dark=parameters[1].ends_with(L"-dark");state.snapshotPath=parameters[2];if(parameters.size()>=4)state.stage=std::stoi(parameters[3]);state.progress=68;}
+        if(parameters.size()>=3 && parameters[1].starts_with(L"--snapshot-")) {state.english=parameters[1].find(L"-en-")!=std::wstring::npos;state.dark=parameters[1].ends_with(L"-dark");state.snapshotPath=parameters[2];if(parameters.size()>=4)state.stage=std::stoi(parameters[3]);state.progress=68;if(parameters.size()>=5 && parameters[4]==L"off")state.desktop=state.startMenu=state.launch=false;}
         setup=&state;WNDCLASSEXW cls{sizeof(cls)};cls.lpfnWndProc=proc;cls.hInstance=instance;cls.hCursor=LoadCursorW(nullptr,IDC_ARROW);cls.hIcon=LoadIconW(instance,MAKEINTRESOURCEW(101));cls.hIconSm=cls.hIcon;cls.lpszClassName=L"ScreencastSetup";RegisterClassExW(&cls);
-        RECT rect{0,0,680,484};AdjustWindowRect(&rect,WS_OVERLAPPED|WS_CAPTION|WS_SYSMENU|WS_MINIMIZEBOX,FALSE);
-        auto window=CreateWindowW(cls.lpszClassName,L"Screencast",WS_OVERLAPPED|WS_CAPTION|WS_SYSMENU|WS_MINIMIZEBOX,CW_USEDEFAULT,CW_USEDEFAULT,rect.right-rect.left,rect.bottom-rect.top,nullptr,nullptr,instance,nullptr);ShowWindow(window,show);
+        auto window=CreateWindowW(cls.lpszClassName,L"Screencast",WS_POPUP|WS_SYSMENU|WS_MINIMIZEBOX|WS_CLIPCHILDREN,CW_USEDEFAULT,CW_USEDEFAULT,680,484,nullptr,nullptr,instance,nullptr);
+        if(!state.snapshotPath.empty() && (GetWindowLongPtrW(window,GWL_STYLE)&WS_CAPTION))throw std::runtime_error("System caption must be absent");
+        RECT work{};SystemParametersInfoW(SPI_GETWORKAREA,0,&work,0);SetWindowPos(window,nullptr,work.left+(work.right-work.left-680)/2,work.top+(work.bottom-work.top-484)/2,0,0,SWP_NOSIZE|SWP_NOZORDER);
+        DWORD corners=2;DwmSetWindowAttribute(window,DWMWA_WINDOW_CORNER_PREFERENCE,&corners,sizeof(corners));ShowWindow(window,show);
         if(!state.snapshotPath.empty())SetTimer(window,2,200,nullptr);
         MSG message{};while(GetMessageW(&message,nullptr,0,0)>0){if(!IsDialogMessageW(window,&message)){TranslateMessage(&message);DispatchMessageW(&message);}}
         if(privateFont)RemoveFontMemResourceEx(privateFont);
