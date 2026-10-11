@@ -16,7 +16,7 @@ private:
     Point position_{}, velocity_{};
     static void advance(float& position, float& velocity, float target, float dt) {
         // Exact critically damped spring: no frame-rate dependent lerp and no overshoot.
-        constexpr float omega = 22.f;
+        constexpr float omega = 14.f;
         float error = position - target, c = velocity + omega * error;
         float decay = std::exp(-omega * dt);
         position = target + (error + c * dt) * decay;

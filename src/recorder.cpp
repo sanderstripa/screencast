@@ -7,6 +7,7 @@
 #include <deque>
 #include <d3d11.h>
 #include <fstream>
+#include <mftransform.h>
 
 namespace {
 class Writer {
