@@ -327,6 +327,18 @@ int encoderSelfTest(std::wstring const& directory) {
         compositeCamera(image,camera,p);cameraWriter.video(image,frame);
     }
     cameraWriter.finalize();
+    // Representative 1080p timing, including camera composition and actual encoder writes.
+    std::wofstream performance{std::filesystem::path(directory)/L"performance.txt"};
+    Writer benchmark(directory+L"\\benchmark-1080p.mp4",1920,1080,30,false);
+    Image screen{1920,1080,std::vector<uint8_t>(1920*1080*4,40)};
+    int64_t total{},maximum{};
+    for(int i=0;i<90;++i) {
+        auto begin=clock100ns();compositeCamera(screen,camera,Point{float(i)/89,1});benchmark.video(screen,i);
+        auto elapsed=clock100ns()-begin;total+=elapsed;maximum=std::max(maximum,elapsed);
+    }
+    benchmark.finalize();
+    performance<<L"1080p camera composition + encode, 90 frames\nmean_frame_ms="<<double(total)/900000
+        <<L"\nmax_frame_ms="<<double(maximum)/10000<<L"\nhardware_encoder="<<benchmark.hardware()<<L"\n";
     auto blurred=blurImage(camera,12);
     if(blurred.bgra!=camera.bgra) throw winrt::hresult_error(E_FAIL,L"Размытие изменило однотонное изображение");
     return 0;

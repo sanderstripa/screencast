@@ -123,7 +123,10 @@ struct Camera::State {
     ComPtr<IMFSourceReader> reader;
 
     void format() {
-        ComPtr<IMFMediaType> type; check(reader->GetCurrentMediaType(MF_SOURCE_READER_FIRST_VIDEO_STREAM,&type));
+        ComPtr<IMFSourceReader> active;
+        {std::lock_guard lock(mutex);active=reader;}
+        if(!active || stopped) return;
+        ComPtr<IMFMediaType> type; check(active->GetCurrentMediaType(MF_SOURCE_READER_FIRST_VIDEO_STREAM,&type));
         UINT32 w{},h{},pitch{}; check(MFGetAttributeSize(type.Get(),MF_MT_FRAME_SIZE,&w,&h));
         if(!w || !h || w>4096 || h>4096) throw winrt::hresult_error(E_INVALIDARG,L"Размер кадра камеры не поддерживается");
         width=w; height=h;
@@ -304,8 +307,8 @@ Camera::Camera(Settings const& settings) : state_(std::make_shared<State>()) {
     state_->stride = static_cast<LONG>(stride);
     state_->timestamp = clock100ns();
     state_->reader = reader_;
-    state_->processor = std::thread([state=state_]{state->process();});
     check(reader_->ReadSample(MF_SOURCE_READER_FIRST_VIDEO_STREAM, 0, nullptr, nullptr, nullptr, nullptr));
+    state_->processor = std::thread([state=state_]{state->process();});
 }
 Camera::~Camera() {
     state_->stopped = true; state_->changed.notify_all();

@@ -57,6 +57,13 @@ int main() {
         }
         require(filtered<original*.65,"spectral suppression failed to attenuate broadband noise");
         require(filtered<moderate && moderate<original,"noise intensity does not affect actual audio");
+        for(int i=96000;i<144000;++i) {float speech=.2f*std::sin(i*6.28318530718f*440/dsp::Rate);noise.put(i,speech,speech);}
+        double speechInput{},speechOutput{};
+        for(int start=96000;start<143040;start+=480) {
+            wet.render(noise,start,480,1,a);
+            if(start>100000) for(int i=0;i<480;++i) {auto s=noise.at(start+i)[0];speechInput+=s*s;speechOutput+=a[i]*a[i];}
+        }
+        require(speechOutput>speechInput*.8,"noise suppression removed a speech-level tone");
         std::cout << "Timestamp alignment, silence, independent sources, clipping and noise attenuation passed\n";
         return 0;
     } catch (std::exception const& e) { std::cerr << e.what() << '\n'; return 1; }
