@@ -1,12 +1,21 @@
 #include "../src/dsp.h"
 #include "../src/spectral.h"
 #include "../src/motion.h"
+#include "../src/live_capture.h"
 #include <iostream>
 #include <stdexcept>
 
 void require(bool condition, char const* message) { if (!condition) throw std::runtime_error(message); }
 int main() {
     try {
+        int opened{},closed{};
+        struct Device {int& closed;explicit Device(int& counter):closed(counter){}~Device(){++closed;}};
+        std::unique_ptr<Device> capture;auto create=[&]{++opened;return std::make_unique<Device>(closed);};
+        setCaptureEnabled(capture,false,create);require(opened==0,"disabled device opened");
+        setCaptureEnabled(capture,true,create);setCaptureEnabled(capture,true,create);require(opened==1 && closed==0,"enabled device reopened unnecessarily");
+        setCaptureEnabled(capture,false,create);require(!capture && closed==1,"disabled device not released");
+        setCaptureEnabled(capture,true,create);require(opened==2,"capture cannot resume after disabling");
+        setCaptureEnabled(capture,false,create);require(closed==2,"resumed capture not released");
         dsp::Timeline system, microphone;
         // Sources begin at different device packet times; the mixer must preserve alignment.
         system.put(480, .2f, -.2f); microphone.put(481, .3f, .3f);

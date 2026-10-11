@@ -9,6 +9,7 @@
 #include <fstream>
 #include <mftransform.h>
 #include "overlay.h"
+#include "live_capture.h"
 
 namespace {
 class Writer {
@@ -197,7 +198,9 @@ void Recorder::start(Settings settings, HWND notify) {
             if (stop_) { result->cancelled = true; throw winrt::hresult_error(E_ABORT, L"Запуск отменен"); }
             GUID id{}; check(CoCreateGuid(&id)); wchar_t suffix[40]{}; StringFromGUID2(id, suffix, 40);
             temporary = settings.path + L"." + suffix + L".partial.mp4";
-            writer = std::make_unique<Writer>(temporary, (image.width + 1) & ~1, (image.height + 1) & ~1, settings.fps, system || mic);
+            // The MP4 stream layout is fixed at start; reserve AAC for later mic activation.
+            bool audioTrack=system || mic || settings.micAvailable;
+            writer = std::make_unique<Writer>(temporary, (image.width + 1) & ~1, (image.height + 1) & ~1, settings.fps, audioTrack);
             hardware_=writer->hardware();
             int64_t epoch = clock100ns(); epoch_ = epoch;
             if (system) system->start(epoch); if (mic) mic->start(epoch);
@@ -210,6 +213,7 @@ void Recorder::start(Settings settings, HWND notify) {
             int64_t nextCapture{};
             int64_t lastCameraTimestamp{};
             dsp::SpectralDenoiser suppressor;
+            dsp::Timeline micTail;
             std::vector<float> cleanMic;
             float systemGain=settings.live->systemGain,micGain=settings.live->micGain;
             std::vector<int16_t> pcm;
@@ -218,6 +222,15 @@ void Recorder::start(Settings settings, HWND notify) {
             while (true) {
                 auto now = clock100ns() - epoch;
                 if (stop_ && !stopAt) stopAt = std::max<int64_t>(now, 1);
+                if(!stopAt) {
+                    bool wantMic=settings.live->micEnabled && settings.micAvailable;
+                    if(mic && !wantMic){mic->poll();micTail=mic->timeline();}
+                    if(setCaptureEnabled(mic,wantMic,[&]{auto value=std::make_unique<AudioCapture>(true,AudioMode::Off,settings.micId,0);value->start(epoch);return value;}))suppressor=dsp::SpectralDenoiser{};
+                    bool wantCamera=settings.live->cameraEnabled && !settings.cameraId.empty();
+                    if(setCaptureEnabled(camera,wantCamera,[&]{return std::make_unique<Camera>(settings);})) {
+                        cameraQueue.clear();cameraImage=nullptr;lastCameraTimestamp=0;webcam_=nullptr;
+                    }
+                }
                 if (system) system->poll(); if (mic) mic->poll();
                 if (process.value && WaitForSingleObject(process.value, 0) == WAIT_OBJECT_0)
                     throw winrt::hresult_error(E_ABORT, L"Приложение, звук которого записывался, завершилось");
@@ -248,26 +261,27 @@ void Recorder::start(Settings settings, HWND notify) {
                     cameraX_=position.x; cameraY_=position.y;
                     // A monitor includes the real desktop overlay, also visible to Print Screen.
                     // Window capture excludes unrelated top-level windows, so composite there only.
-                    if (cameraImage && !settings.target.monitor) compositeCamera(output, *cameraImage, position);
+                    if (cameraImage && settings.live->cameraEnabled && !settings.target.monitor) compositeCamera(output, *cameraImage, position,settings.live->cameraMirror);
                     preview_=std::make_shared<Image>(resizeImage(output,480,std::max(1,output.height*480/output.width)));
                     writer->video(output, videoFrame++);
                     // Falling behind by >3 s signals overload instead of allocating an unbounded queue.
                     if (clock100ns() - epoch - videoFrame * 10000000 / settings.fps > 30000000)
                         throw winrt::hresult_error(E_FAIL, L"Компьютер не успевает кодировать запись. Уменьшите разрешение источника или выключите замену фона");
                 }
-                if (system || mic) {
+                if (audioTrack) {
                     int64_t readyFrames = std::max<int64_t>(0, ready) * dsp::Rate / 10000000;
                     while (audioFrame + 480 <= readyFrames) {
                         float strength=settings.live->denoise?settings.live->noiseStrength.load():0.f;
-                        if(mic) suppressor.render(mic->timeline(),audioFrame,480,strength,cleanMic);
+                        auto const& microphone=mic?mic->timeline():micTail;
+                        if(strength>0) suppressor.render(microphone,audioFrame,480,strength,cleanMic);
                         pcm.resize(960);
                         for(int i=0;i<480;++i) {
                             // 20 ms gain ramp prevents clicks when changing a live slider.
                             systemGain+=(settings.live->systemGain.load()-systemGain)*.001f;
-                            micGain+=(settings.live->micGain.load()-micGain)*.001f;
+                            micGain+=((settings.live->micEnabled?settings.live->micGain.load():0.f)-micGain)*.001f;
                             auto a=system?system->timeline().at(audioFrame+i):std::array<float,2>{};
-                            auto b=mic?mic->timeline().at(audioFrame+i):std::array<float,2>{};
-                            if(mic && strength>0) b={cleanMic[i],cleanMic[i]};
+                            auto b=microphone.at(audioFrame+i);
+                            if(strength>0) b={cleanMic[i],cleanMic[i]};
                             pcm[i*2]=dsp::pcm16(a[0]*systemGain+b[0]*micGain);
                             pcm[i*2+1]=dsp::pcm16(a[1]*systemGain+b[1]*micGain);
                         }
@@ -342,6 +356,20 @@ int encoderSelfTest(std::wstring const& directory) {
         compositeCamera(image,camera,p);cameraWriter.video(image,frame);
     }
     cameraWriter.finalize();
+    Writer liveWriter(directory+L"\\synthetic-live-controls.mp4",640,360,30,true);
+    Image asymmetric=camera;
+    for(int y=0;y<128;++y)for(int x=64;x<128;++x){auto p=asymmetric.bgra.data()+(y*128+x)*4;p[0]=245;p[1]=20;p[2]=10;}
+    auto live=std::make_shared<LiveSettings>();dsp::Timeline testSystem,testMic;std::vector<int16_t> livePcm;
+    for(int frame=0;frame<90;++frame) {
+        live->cameraEnabled=frame>=15 && frame<75;live->cameraMirror=frame>=45;
+        live->micEnabled=frame>=30 && frame<60;
+        Image screenFrame{640,360,std::vector<uint8_t>(640*360*4,30)};
+        if(live->cameraEnabled)compositeCamera(screenFrame,asymmetric,Point{0,0},live->cameraMirror);
+        liveWriter.video(screenFrame,frame);
+        for(int i=0;i<1600;++i){auto sample=frame*1600+i;auto phase=sample*6.283185307179586/dsp::Rate;testSystem.put(sample,float(.2*std::sin(phase*440)),float(.2*std::sin(phase*440)));testMic.put(sample,float(.2*std::sin(phase*880)),float(.2*std::sin(phase*880)));}
+        dsp::mix(&testSystem,&testMic,frame*1600,1600,livePcm,nullptr,1,live->micEnabled?1.f:0.f);liveWriter.audio(livePcm,frame*1600);
+    }
+    liveWriter.finalize();
     // Representative 1080p timing, including camera composition and actual encoder writes.
     std::wofstream performance{std::filesystem::path(directory)/L"performance.txt"};
     Writer benchmark(directory+L"\\benchmark-1080p.mp4",1920,1080,30,false);
@@ -359,6 +387,25 @@ int encoderSelfTest(std::wstring const& directory) {
         <<L"\nencoded_fps="<<900000000.0/wall<<L"\nhardware_encoder="<<benchmark.hardware()<<L"\n";
     auto blurred=blurImage(camera,12);
     if(blurred.bgra!=camera.bgra) throw winrt::hresult_error(E_FAIL,L"Размытие изменило однотонное изображение");
+    return 0;
+}
+int liveDeviceSelfTest(std::wstring const& directory) {
+    std::filesystem::create_directories(directory);std::ofstream log{std::filesystem::path(directory)/L"live-devices.txt"};
+    Settings settings;auto cameras=cameraDevices();auto microphones=audioDevices(true);std::atomic_bool stop{};
+    std::unique_ptr<Camera> camera;std::unique_ptr<AudioCapture> mic;
+    for(int cycle=0;cycle<2;++cycle) {
+        if(!cameras.empty()) {
+            settings.cameraId=cameras.front().id;setCaptureEnabled(camera,true,[&]{return std::make_unique<Camera>(settings);});
+            if(!camera->waitForFirstFrame(stop))throw std::runtime_error("Camera restart did not deliver a frame");
+            setCaptureEnabled(camera,false,[&]{return std::make_unique<Camera>(settings);});if(camera)throw std::runtime_error("Camera remained open");
+        }
+        if(microphones.size()>1) {
+            setCaptureEnabled(mic,true,[&]{auto value=std::make_unique<AudioCapture>(true,AudioMode::Off,microphones[1].id,0);value->start(clock100ns());return value;});
+            auto until=clock100ns()+3000000;while(clock100ns()<until){mic->poll();std::this_thread::sleep_for(std::chrono::milliseconds(3));}
+            setCaptureEnabled(mic,false,[&]{return std::make_unique<AudioCapture>(true,AudioMode::Off,microphones[1].id,0);});if(mic)throw std::runtime_error("Microphone remained open");
+        }
+    }
+    log<<"Camera open/frame/close cycles: "<<(cameras.empty()?0:2)<<"\nMicrophone open/poll/close cycles: "<<(microphones.size()>1?2:0)<<"\nNo camera images or microphone samples saved.\nPASS\n";
     return 0;
 }
 int cameraSelfTest(std::wstring const& directory) {

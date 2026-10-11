@@ -18,10 +18,11 @@
 int encoderSelfTest(std::wstring const& directory);
 int cameraSelfTest(std::wstring const& directory);
 int overlaySelfTest(std::wstring const& directory);
+int liveDeviceSelfTest(std::wstring const& directory);
 namespace {
 enum Id { SourceKind = 100, Source, Refresh, OutputMode, OutputDevice, Microphone, MicDevice,
     Denoise, Webcam, CameraDevice, Corner, Background, BackgroundFile, Save, Start, ThemeSystem, ThemeLight, ThemeDark,
-    SystemVolume,MicVolume,NoiseStrength,BlurStrength,BackgroundPreset };
+    SystemVolume,MicVolume,NoiseStrength,BlurStrength,BackgroundPreset,CameraMirror };
 enum class Kind { Button, Choice, Toggle, Segment, Slider };
 struct Control {
     HWND window{}; Kind kind{}; std::wstring label;
@@ -53,7 +54,7 @@ public:
         CloseHandle(process.hThread);modelDownload=process.hProcess;status=L"Загружаю эффекты фона (15 МБ)…";enabled();
     }
     void tick() {
-        overlay.update(recorder.busy()?recorder.webcam():nullptr);
+        overlay.update(recorder.busy() && live->cameraEnabled?recorder.webcam():nullptr);
         if(recorder.busy()) {
             RECT preview{px(24),px(244),px(310),px(510)};InvalidateRect(window,&preview,FALSE);
             auto now=GetTickCount64();
@@ -97,6 +98,7 @@ public:
         return DefSubclassProc(hwnd,message,wp,lp);
     }
     void updateLive() {
+        live->micEnabled=controls[Microphone].checked;live->cameraEnabled=controls[Webcam].checked;live->cameraMirror=controls[CameraMirror].checked;
         live->systemGain=controls[SystemVolume].selected/100.f; live->micGain=controls[MicVolume].selected/100.f;
         live->noiseStrength=controls[NoiseStrength].selected/100.f;live->denoise=controls[Denoise].checked;
         live->background=static_cast<BackgroundMode>(controls[Background].selected);
@@ -254,7 +256,11 @@ public:
         bool idle = !recorder.busy() && !finishing;
         for (auto& [id, control] : controls) {
             if (id == Start || (id >= ThemeSystem && id <= ThemeDark)) continue;
-            bool enable = idle || id==SystemVolume || id==MicVolume || id==NoiseStrength || id==Denoise || id==Corner || id==Background || id==BackgroundPreset || id==BlurStrength;
+            bool enable = idle || id==Microphone || id==Webcam || id==CameraMirror || id==SystemVolume || id==MicVolume || id==NoiseStrength || id==Denoise || id==Corner || id==Background || id==BackgroundPreset || id==BlurStrength;
+            enable &= !finishing;
+            if(id==Microphone)enable &= microphones.size()>1;
+            if(id==Webcam)enable &= !cameras.empty();
+            if(id==CameraMirror)enable &= controls[Webcam].checked && !cameras.empty();
             if (id == MicDevice || id == Denoise || id==MicVolume || id==NoiseStrength) enable &= controls[Microphone].checked;
             if(id==NoiseStrength) enable &= controls[Denoise].checked;
             if(id==SystemVolume) enable &= controls[OutputMode].selected!=0;
@@ -292,7 +298,8 @@ public:
         add(NoiseStrength,Kind::Slider,L"Интенсивность",336,468,300,54);controls[NoiseStrength].selected=65;updateText(NoiseStrength);
         add(Webcam,Kind::Toggle,L"Кружок на экране",662,128,314,30);
         add(CameraDevice,Kind::Choice,L"Камера",662,168,314,34);
-        add(Corner,Kind::Choice,L"Положение",662,210,314,34);setItems(Corner,{L"Слева сверху",L"Справа сверху",L"Слева снизу",L"Справа снизу"});controls[Corner].selected=3;updateText(Corner);
+        add(Corner,Kind::Choice,L"Положение",662,210,148,34);setItems(Corner,{L"Слева сверху",L"Справа сверху",L"Слева снизу",L"Справа снизу"});controls[Corner].selected=3;updateText(Corner);
+        add(CameraMirror,Kind::Toggle,L"Зеркало",822,210,154,34);
         add(Background,Kind::Choice,L"Фон",662,252,314,34);setItems(Background,{L"Реальный фон",L"Размыть реальный фон",L"Однотонный фон",L"Спокойный градиент",L"Нейтральный интерьер",L"Своё изображение"});
         add(BackgroundPreset,Kind::Choice,L"Вариант",662,294,314,34);backgroundItems();
         add(BlurStrength,Kind::Slider,L"Размытие",662,336,314,54);controls[BlurStrength].selected=40;updateText(BlurStrength);
@@ -398,7 +405,10 @@ public:
         }
         if(control.kind==Kind::Toggle) drawSwitch(dc,r.right-px(38),(r.bottom-r.top-px(20))/2,px(38),px(20),control.checked,dark);
         SelectObject(dc, oldBrush); SelectObject(dc, oldPen); DeleteObject(fill); DeleteObject(pen);
-        if (item.itemState & ODS_FOCUS) { auto focus = r; InflateRect(&focus, -px(4), -px(4)); DrawFocusRect(dc, &focus); }
+        if ((item.itemState & ODS_FOCUS) && !(item.itemState & ODS_NOFOCUSRECT)) {
+            auto focus=r;InflateRect(&focus,-px(3),-px(3));auto focusPen=CreatePen(PS_SOLID,1,palette.muted);auto before=SelectObject(dc,focusPen);auto empty=SelectObject(dc,GetStockObject(NULL_BRUSH));
+            RoundRect(dc,focus.left,focus.top,focus.right,focus.bottom,px(16),px(16));SelectObject(dc,empty);SelectObject(dc,before);DeleteObject(focusPen);
+        }
     }
     std::wstring choose(bool save, wchar_t const* filter) {
         wchar_t buffer[32768]{};
@@ -426,10 +436,12 @@ public:
             auto const& process = processList.at(controls[OutputDevice].selected);
             settings.audioPid = process.pid; settings.audioCreationTime = process.creationTime;
         }
-        settings.mic = controls[Microphone].checked; settings.denoise = controls[Denoise].checked;
+        settings.mic = controls[Microphone].checked && microphones.size()>1; settings.denoise = controls[Denoise].checked;
+        settings.micAvailable=microphones.size()>1;
         settings.micId = microphones.at(controls[MicDevice].selected).id;
         if (settings.audio == AudioMode::System) settings.outputId = outputs.at(controls[OutputDevice].selected).id;
         settings.camera = controls[Webcam].checked;
+        if(!cameras.empty())settings.cameraId=cameras.at(controls[CameraDevice].selected).id;
         if (settings.camera) {
             if (cameras.empty()) throw winrt::hresult_error(E_INVALIDARG, L"Камера не подключена");
             settings.cameraId = cameras.at(controls[CameraDevice].selected).id;
@@ -619,11 +631,12 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int show) {
         check(MFStartup(MF_VERSION)); mf = true;
         int argc{}; auto argv = CommandLineToArgvW(GetCommandLineW(), &argc);
         std::vector<std::wstring> args; for (int i = 0; i < argc; ++i) args.emplace_back(argv[i]); LocalFree(argv);
-        if (args.size() >= 3 && (args[1] == L"--self-test" || args[1] == L"--model-test" || args[1]==L"--camera-test" || args[1]==L"--overlay-test")) {
+        if (args.size() >= 3 && (args[1] == L"--self-test" || args[1] == L"--model-test" || args[1]==L"--camera-test" || args[1]==L"--overlay-test" || args[1]==L"--live-device-test")) {
             std::filesystem::create_directories(args[2]); diagnostics = args[2] + L"\\test-error.txt";
             if (args[1] == L"--self-test") result = encoderSelfTest(args[2]);
             else if(args[1]==L"--camera-test") result=cameraSelfTest(args[2]);
             else if(args[1]==L"--overlay-test") result=overlaySelfTest(args[2]);
+            else if(args[1]==L"--live-device-test") result=liveDeviceSelfTest(args[2]);
             else { Camera::testModel(); result = 0; }
             MFShutdown(); winrt::uninit_apartment(); return result;
         }

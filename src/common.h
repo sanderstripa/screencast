@@ -64,6 +64,7 @@ enum class BackgroundMode { Original, Blur, Solid, Gradient, Interior, Custom };
 struct LiveSettings {
     std::atomic<float> systemGain{1.f}, micGain{1.f}, noiseStrength{.65f};
     std::atomic_bool denoise{};
+    std::atomic_bool micEnabled{true}, cameraEnabled{}, cameraMirror{};
     std::atomic<float> cameraX{1.f}, cameraY{1.f};
     std::atomic<BackgroundMode> background{BackgroundMode::Original};
     std::atomic<int> backgroundPreset{}, blurStrength{16};
@@ -75,6 +76,7 @@ struct Settings {
     DWORD audioPid{};
     uint64_t audioCreationTime{};
     bool mic{true}, denoise{}, camera{}, replaceBackground{};
+    bool micAvailable{};
     std::wstring micId, outputId, cameraId, backgroundPath;
     int corner{3};
     int fps{30};

@@ -48,7 +48,7 @@ Image resizeImage(Image const& input, int width, int height) {
 void compositeCamera(Image& screen, Image const& camera, int corner) {
     compositeCamera(screen, camera, Point{float(corner % 2), float(corner / 2)});
 }
-void compositeCamera(Image& screen, Image const& camera, Point position) {
+void compositeCamera(Image& screen, Image const& camera, Point position, bool mirror) {
     if (camera.empty() || screen.empty()) return;
     int diameter = std::min(screen.width, screen.height) / 4;
     if (diameter < 8) return;
@@ -71,6 +71,7 @@ void compositeCamera(Image& screen, Image const& camera, Point position) {
         float edge = coverage[static_cast<size_t>(y)*diameter+x];
         if (edge == 0) continue;
         int sx = cropX + x * crop / diameter, sy = cropY + y * crop / diameter;
+        if(mirror)sx=camera.width-1-sx;
         auto src = camera.bgra.data() + (static_cast<size_t>(sy) * camera.width + sx) * 4;
         auto dest = screen.bgra.data() + (static_cast<size_t>(top + y) * screen.width + left + x) * 4;
         for (int c = 0; c < 3; ++c) dest[c] = static_cast<uint8_t>(src[c] * edge + dest[c] * (1 - edge));

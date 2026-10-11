@@ -45,10 +45,12 @@ public:
         bi.bmiHeader.biWidth=c.diameter;bi.bmiHeader.biHeight=-c.diameter;bi.bmiHeader.biPlanes=1;bi.bmiHeader.biBitCount=32;
         void* bits{};auto bitmap=CreateDIBSection(desktop,&bi,DIB_RGB_COLORS,&bits,nullptr,0);auto old=SelectObject(dc,bitmap);
         int crop=std::min(frame->width,frame->height),ox=(frame->width-crop)/2,oy=(frame->height-crop)/2;
+        bool mirror=live_->cameraMirror;
         for(int y=0;y<c.diameter;++y) for(int x=0;x<c.diameter;++x) {
             float dx=x+.5f-c.diameter*.5f,dy=y+.5f-c.diameter*.5f;
             float alpha=std::clamp(c.diameter*.5f-std::sqrt(dx*dx+dy*dy),0.f,1.f);
-            auto src=frame->bgra.data()+(static_cast<size_t>(oy+y*crop/c.diameter)*frame->width+ox+x*crop/c.diameter)*4;
+            int sx=ox+x*crop/c.diameter;if(mirror)sx=frame->width-1-sx;
+            auto src=frame->bgra.data()+(static_cast<size_t>(oy+y*crop/c.diameter)*frame->width+sx)*4;
             auto out=static_cast<uint8_t*>(bits)+(static_cast<size_t>(y)*c.diameter+x)*4;
             for(int channel=0;channel<3;++channel) out[channel]=static_cast<uint8_t>(src[channel]*alpha);out[3]=static_cast<uint8_t>(255*alpha);
         }
