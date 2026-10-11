@@ -519,6 +519,13 @@ public:
         if (RegGetValueW(HKEY_CURRENT_USER, L"Software\\Screencast", L"Theme", RRF_RT_REG_DWORD, nullptr, &value, &size) == ERROR_SUCCESS && value <= 2) theme = value;
     }
     void snapshot() {
+        for(int scale:{96,144,192}) {
+            auto icon=reinterpret_cast<HICON>(SendMessageW(window,WM_GETICON,ICON_SMALL2,scale));
+            ICONINFO info{};check(GetIconInfo(icon,&info)?S_OK:E_FAIL);
+            BITMAP bitmap{};GetObjectW(info.hbmColor,sizeof(bitmap),&bitmap);
+            if(info.hbmColor)DeleteObject(info.hbmColor);if(info.hbmMask)DeleteObject(info.hbmMask);
+            check(bitmap.bmWidth==GetSystemMetricsForDpi(SM_CXICON,scale)?S_OK:E_FAIL);
+        }
         RECT r{}; GetClientRect(window, &r); int w = r.right, h = r.bottom;
         HDC dc = GetDC(window), mem = CreateCompatibleDC(dc);
         BITMAPINFO info{}; info.bmiHeader.biSize = sizeof(BITMAPINFOHEADER); info.bmiHeader.biWidth = w;
@@ -664,12 +671,18 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int show) {
             if(args.size()>=3){std::filesystem::create_directories(args[2]);diagnostics=args[2]+L"\\dropdown-error.txt";}
             auto font=CreateFontW(-13,0,0,0,FW_NORMAL,FALSE,FALSE,FALSE,DEFAULT_CHARSET,OUT_DEFAULT_PRECIS,CLIP_DEFAULT_PRECIS,CLEARTYPE_QUALITY,DEFAULT_PITCH,L"Montserrat");
             auto owner=CreateWindowExW(0,L"STATIC",L"",WS_POPUP,0,0,10,10,nullptr,nullptr,instance,nullptr);
+            int dispatched{};
+            SetWindowSubclass(owner,[](HWND h,UINT m,WPARAM w,LPARAM l,UINT_PTR,DWORD_PTR data)->LRESULT {
+                if(m==WM_APP+100){++*reinterpret_cast<int*>(data);return 0;}
+                return DefSubclassProc(h,m,w,l);
+            },1,reinterpret_cast<DWORD_PTR>(&dispatched));
             std::vector<std::wstring> values;for(int i=0;i<40;++i)values.push_back(L"Источник "+std::to_wstring(i));
             auto run=[&](void (*script)(HWND),int expected) {
                 Dropdown list(values,font,96,0,RGB(11,11,12),RGB(240,240,240),RGB(52,54,58),RGB(30,31,33));
                 if(list.show(owner,RECT{100,100,400,132},script)!=expected)throw winrt::hresult_error(E_FAIL,L"Dropdown interaction failed");
             };
-            run([](HWND h){PostMessageW(h,WM_KEYDOWN,VK_DOWN,0);PostMessageW(h,WM_KEYDOWN,VK_RETURN,0);},2);
+            run([](HWND h){PostMessageW(GetWindow(h,GW_OWNER),WM_APP+100,0,0);PostMessageW(h,WM_KEYDOWN,VK_DOWN,0);PostMessageW(h,WM_KEYDOWN,VK_RETURN,0);},2);
+            if(dispatched!=1)throw winrt::hresult_error(E_FAIL,L"Dropdown blocked owner messages");
             run([](HWND h){PostMessageW(h,WM_KEYDOWN,VK_END,0);PostMessageW(h,WM_KEYDOWN,VK_RETURN,0);},40);
             run([](HWND h){PostMessageW(h,WM_KEYDOWN,VK_ESCAPE,0);},0);
             run([](HWND h){PostMessageW(h,WM_LBUTTONUP,0,MAKELPARAM(50,57));},2);
