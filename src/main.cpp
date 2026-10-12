@@ -348,7 +348,7 @@ public:
     }
     void paint(HDC dc) {
         RECT r{}; GetClientRect(window, &r); FillRect(dc, &r, brush);
-        spaced(dc, L"SCREENCAST", 24, title, 2);
+        spaced(dc, L"SCREENCAST.", 24, title, 2);
         auto icon=static_cast<HICON>(LoadImageW(GetModuleHandleW(nullptr),MAKEINTRESOURCEW(101),IMAGE_ICON,px(40),px(40),0));
         DrawIconEx(dc,px(24),px(22),icon,px(40),px(40),0,nullptr,DI_NORMAL);DestroyIcon(icon);
         text(dc, L"Запись экрана · MP4", 76, 54, 480, 20, smallFont, palette.muted);
