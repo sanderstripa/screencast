@@ -10,3 +10,5 @@ Implementation references:
 - https://learn.microsoft.com/en-us/samples/microsoft/windows-classic-samples/applicationloopbackaudio-sample/
 - https://learn.microsoft.com/en-us/windows/win32/medfound/using-the-sink-writer
 - https://github.com/PeterL1n/RobustVideoMatting/blob/master/documentation/inference.md
+
+- CONNECT window/appearance icons (Minus, X, Monitor, Sun, Moon, Palette): Lucide 0.468.0, the same version used by CONNECT VPN. Original SVG sources and their ISC/MIT license notices are in assets/connect-ui/. Native rendering is generated from the original SVG data; no icon library runtime is bundled.

@@ -25,7 +25,7 @@ Built with **C++20 and Win32**, using Windows capture, audio and encoding APIs. 
 - **Adjustable software noise suppression.** Enable it for the microphone and set its intensity from 0 to 100%.
 - **Camera background effects.** Blur the real background or choose a solid color, gradient, neutral interior, or your own image. Effects run locally using an optional foreground model.
 - **MP4 output.** H.264 video with optional AAC audio. Hardware encoding is preferred when available, with a software fallback.
-- **Light, dark and system themes.** A custom window header, compact CONNECT UI controls, Montserrat typography, and no vertical scrolling. The original Screencast light and dark palettes are preserved.
+- **Light, dark and system themes.** A custom window header, compact CONNECT UI controls, Montserrat typography, and no vertical scrolling. Light and dark colors now match CONNECT VPN, as requested.
 - **One application instance.** Launching Screencast again restores the existing window.
 
 The application and installer support **Russian and English**. Open **Settings** to choose the application language, System/Light/Dark theme, and default recording folder. Recording controls remain on the main screen.
@@ -100,3 +100,5 @@ Automated Windows checks cover audio mixing and suppression, decoded MP4 output,
 See [validation results](VALIDATION.md), [manual test scenarios](tests/MANUAL.md), and [third-party components and licensing notes](THIRD_PARTY.md). The application does not yet have a declared distribution license.
 
 Settings uses the approved [CONNECT settings icon #8](assets/CONNECT-settings-08.svg), imported unchanged from the CONNECT UI reference branch. Its original vector contours are rendered without a background tile or focus frame.
+
+Appearance settings use CONNECT's RU/EN chips and monitor/sun/moon theme buttons. Window actions use the same vector icons with no hover background; the main window opts into Windows 11 rounded corners.

@@ -1,6 +1,7 @@
 #pragma once
 #include <gdiplus.h>
 #include <cwctype>
+#include <cwchar>
 #include <cmath>
 #include <stdexcept>
 enum class VpnIcon { Monitor,Sun,Moon,Minus,X,Palette };
