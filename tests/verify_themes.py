@@ -2,8 +2,20 @@ from pathlib import Path
 import sys
 from PIL import Image
 import numpy as np
+import hashlib
+import re
 
 root = Path(sys.argv[1])
+repo = Path(__file__).resolve().parents[1]
+pixel_header = (repo/'src/vpn_theme_pixels.h').read_text()
+theme_masks = {}
+for icon in ('monitor','sun','moon'):
+    svg = (repo/f'assets/connect-ui/{icon}.svg').read_text().replace('\r\n','\n')
+    assert f'{icon} source SHA256 {hashlib.sha256(svg.encode()).hexdigest()}' in pixel_header
+    mask = np.asarray(Image.open(repo/f'assets/connect-ui/{icon}-browser-13.png').convert('RGBA'))[:,:,3]
+    native = np.array([int(v) for v in re.search(rf'{icon}13\[\]=\{{([^}}]+)\}}',pixel_header)[1].split(',')],dtype=np.uint8).reshape(13,13)
+    assert np.array_equal(mask,native), 'Native theme mask differs from browser reference'
+    theme_masks[icon] = mask.astype(float)/255
 images = []
 for name, expected in (("light", (247, 247, 245)), ("dark", (12, 12, 13))):
     image = np.asarray(Image.open(root / f"theme-{name}.png").convert("RGB"))
@@ -30,6 +42,13 @@ for name, expected in (("light", (247, 247, 245)), ("dark", (12, 12, 13))):
     for left in (24,144,264):
         tile=settings[176:208,left:left+116]
         assert np.std(tile)>12, 'CONNECT theme picker control missing'
+    for icon,left,selected in (('monitor',24,False),('sun',144,name=='light'),('moon',264,name=='dark')):
+        foreground=np.array((237,237,238) if name=='dark' else (23,26,29)) if selected else np.array((129,133,140) if name=='dark' else (128,133,139))
+        background=np.array((26,27,30) if name=='dark' else (238,238,238)) if selected else np.array(expected)
+        alpha=theme_masks[icon][:,:,None]
+        reference=np.rint(alpha*foreground+(1-alpha)*background)
+        errors=[np.max(np.abs(settings[y:y+13,x:x+13].astype(float)-reference)) for y in range(184,187) for x in range(left+5,left+55)]
+        assert min(errors)<=2, f'{name} {icon} differs from CONNECT browser SVG pixels: {min(errors)}'
     gear=image[16:52,848:884].astype(int)
     bg=np.array(expected)
     for edge_area in (gear[:4],gear[-4:],gear[:,:4],gear[:,-4:]):

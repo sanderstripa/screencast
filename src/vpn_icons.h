@@ -52,3 +52,14 @@ inline void rect(Gdiplus::Graphics& g,Gdiplus::Pen& pen,float x,float y,float w,
 }
 }
 #include "vpn_icon_data.h"
+#include "vpn_theme_pixels.h"
+// Exact browser coverage at each physical size: no native path/stroke conversion.
+inline void drawVpnThemeIcon(HDC dc,VpnIcon icon,int x,int y,int size,COLORREF color){
+    auto mask=icon==VpnIcon::Monitor?vpnThemePixels::monitor(size):icon==VpnIcon::Sun?vpnThemePixels::sun(size):vpnThemePixels::moon(size);
+    std::vector<unsigned char> pixels(size_t(mask.size)*mask.size*4);
+    for(size_t i=0;i<pixels.size()/4;++i){pixels[i*4]=GetBValue(color);pixels[i*4+1]=GetGValue(color);pixels[i*4+2]=GetRValue(color);pixels[i*4+3]=mask.alpha[i];}
+    Gdiplus::Bitmap bitmap(mask.size,mask.size,mask.size*4,PixelFormat32bppARGB,pixels.data());
+    Gdiplus::Graphics graphics(dc);
+    if(mask.size==size)graphics.DrawImageUnscaled(&bitmap,x,y);
+    else graphics.DrawImage(&bitmap,x,y,size,size);
+}

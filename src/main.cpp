@@ -517,7 +517,7 @@ public:
             COLORREF ink=selected?palette.text:palette.muted;SelectObject(dc,smallFont);SetBkMode(dc,TRANSPARENT);SetTextColor(dc,ink);
             RECT textRect=r;
             if(themeButton){SIZE extent{};GetTextExtentPoint32W(dc,label.c_str(),int(label.size()),&extent);
-                int left=(r.right-extent.cx-px(18))/2;drawVpnIcon(dc,item.CtlID==ThemeSystem?VpnIcon::Monitor:item.CtlID==ThemeLight?VpnIcon::Sun:VpnIcon::Moon,left,(r.bottom-px(13))/2,px(13),ink);textRect.left=left+px(18);textRect.right=r.right-px(4);
+                int left=(r.right-extent.cx-px(18))/2;drawVpnThemeIcon(dc,item.CtlID==ThemeSystem?VpnIcon::Monitor:item.CtlID==ThemeLight?VpnIcon::Sun:VpnIcon::Moon,left,(r.bottom-px(13))/2,px(13),ink);textRect.left=left+px(18);textRect.right=r.right-px(4);
                 DrawTextW(dc,label.c_str(),-1,&textRect,DT_LEFT|DT_VCENTER|DT_SINGLELINE);
             }else DrawTextW(dc,label.c_str(),-1,&textRect,DT_CENTER|DT_VCENTER|DT_SINGLELINE);
             return;
