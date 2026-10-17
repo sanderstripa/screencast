@@ -20,12 +20,14 @@ for theme,expected in [('light',(247,247,245)),('dark',(11,11,12))]:
         return np.count_nonzero((a[:,:,2].astype(int)>a[:,:,0].astype(int)+60)&(a[:,:,1].astype(int)>a[:,:,0].astype(int)+30))
     on=np.array(Image.open(root/f'setup-ru-{theme}-1.png').convert('RGB'))
     off=np.array(Image.open(root/f'setup-ru-{theme}-1-off.png').convert('RGB'))
-    assert blue_count(on[288:354,36:75])>300, 'Enabled shortcuts lack active color'
-    assert blue_count(off[288:354,36:75])<10, 'Disabled shortcuts still show active color'
+    ink=np.array((237,237,235) if theme=='dark' else (16,24,36))
+    def ink_count(a):return np.count_nonzero(np.max(abs(a.astype(int)-ink),axis=2)<8)
+    assert ink_count(on[288:354,36:75])>300, 'Enabled shortcuts lack monochrome contrast'
+    assert ink_count(off[288:354,36:75])<40, 'Disabled shortcuts still show active fill'
     assert np.max(abs(on[360:390,36:624].astype(int)-expected))<=1, 'Duplicate launch option remains on folder page'
     finish=np.array(Image.open(root/f'setup-ru-{theme}-3.png').convert('RGB'))
     finish_off=np.array(Image.open(root/f'setup-ru-{theme}-3-off.png').convert('RGB'))
     assert np.max(abs(finish[430:468,396:516].astype(int)-expected))<=1, 'Cancel remains on completion page'
     # Restrict the check to the circle: ClearType text has blue subpixel fringes.
-    assert blue_count(finish[322:352,150:210])>150 and blue_count(finish_off[322:352,150:210])<10, 'Completion check does not visibly change'
+    assert ink_count(finish[322:352,150:210])>150 and ink_count(finish_off[322:352,150:210])<40, 'Completion check does not visibly change'
 print('All four installer pages rendered in RU/EN and light/dark themes')

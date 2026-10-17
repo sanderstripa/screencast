@@ -136,7 +136,7 @@ public:
         }
         if(stage==2) {
             text(dc,tr(L"Установка файлов…",L"Installing files…"),{36,258,644,286},font);
-            RECT track{36,300,644,312};auto b=CreateSolidBrush(dark?RGB(38,42,48):RGB(221,225,230));FillRect(dc,&track,b);DeleteObject(b);track.right=36+608*progress.load()/100;b=CreateSolidBrush(RGB(28,156,250));FillRect(dc,&track,b);DeleteObject(b);
+            RECT track{36,304,644,308};auto b=CreateSolidBrush(dark?RGB(38,42,48):RGB(221,225,230));FillRect(dc,&track,b);DeleteObject(b);track.right=36+608*progress.load()/100;b=CreateSolidBrush(fg());FillRect(dc,&track,b);DeleteObject(b);
             text(dc,std::to_wstring(progress.load())+L"%",{36,324,644,350},smallFont);
         }
         if(stage==3) text(dc,tr(L"Установка успешно завершена!",L"Installation completed successfully!"),{36,260,644,292},font,DT_CENTER|DT_SINGLELINE|DT_VCENTER);
@@ -156,7 +156,7 @@ public:
                 int x=(r.right-size.cx-30)/2;
                 Gdiplus::Graphics graphics(dc);graphics.SetSmoothingMode(Gdiplus::SmoothingModeAntiAlias);
                 Gdiplus::Pen outline(Gdiplus::Color(255,140,144,151),1);
-                if(launch){Gdiplus::SolidBrush fill(Gdiplus::Color(255,24,135,230));graphics.FillEllipse(&fill,x,5,20,20);Gdiplus::Pen checkmark(Gdiplus::Color(255,255,255,255),2);graphics.DrawLine(&checkmark,x+5,15,x+9,19);graphics.DrawLine(&checkmark,x+9,19,x+15,11);}
+                if(launch){Gdiplus::SolidBrush fill(Gdiplus::Color(255,GetRValue(fg()),GetGValue(fg()),GetBValue(fg())));graphics.FillEllipse(&fill,x,5,20,20);Gdiplus::Pen checkmark(Gdiplus::Color(255,GetRValue(bg()),GetGValue(bg()),GetBValue(bg())),2);graphics.DrawLine(&checkmark,x+5,15,x+9,19);graphics.DrawLine(&checkmark,x+9,19,x+15,11);}
                 else graphics.DrawEllipse(&outline,x,5,20,20);
                 r.left=x+30;text(dc,label,r,font);return;
             }

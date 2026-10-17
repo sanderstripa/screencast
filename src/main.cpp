@@ -7,6 +7,7 @@
 #include <commdlg.h>
 #include <shellapi.h>
 #include <shobjidl.h>
+#include <shlobj.h>
 #include <wincodec.h>
 #include <map>
 #include <fstream>
@@ -17,6 +18,8 @@
 #include "paint.h"
 #include "dropdown.h"
 #include "single_instance.h"
+#include "ui_language.h"
+#include "ui_notice.h"
 
 int encoderSelfTest(std::wstring const& directory);
 int cameraSelfTest(std::wstring const& directory);
@@ -25,11 +28,12 @@ int liveDeviceSelfTest(std::wstring const& directory);
 namespace {
 enum Id { SourceKind = 100, Source, Refresh, OutputMode, OutputDevice, Microphone, MicDevice,
     Denoise, Webcam, CameraDevice, Corner, Background, BackgroundFile, Save, Start, ThemeSystem, ThemeLight, ThemeDark,
-    SystemVolume,MicVolume,NoiseStrength,BlurStrength,BackgroundPreset,CameraMirror };
+    SystemVolume,MicVolume,NoiseStrength,BlurStrength,BackgroundPreset,CameraMirror,
+    OpenSettings,Back,Language,SaveFolder,Minimize,Close };
 enum class Kind { Button, Choice, Toggle, Segment, Slider };
 struct Control {
     HWND window{}; Kind kind{}; std::wstring label;
-    std::vector<std::wstring> items; int selected{}; bool checked{}; int maximum{100};
+    std::vector<std::wstring> items; int selected{}; bool checked{}; int maximum{100}; bool hover{};
 };
 struct Palette { COLORREF background, text, muted, line, hover, active, buttonText; };
 class App {
@@ -37,6 +41,11 @@ public:
     HWND window{};
     int dpi{96}, theme{}, scroll{};
     bool dark{}, closing{}, finishing{};
+    bool english{},settingsOpen{},settingsSnapshot{},keyboardFocusSnapshot{},testing{};
+    std::wstring saveFolder;
+    std::wstring preferencesKey{L"Software\\Screencast"};
+    std::wstring tr(std::wstring const& s)const{return uiText(s,english);}
+    void notice(std::wstring const& message){UiNotice(window,font,dpi,palette.background,palette.text,palette.line,tr(message),tr(L"Уведомление"),tr(L"Закрыть")).show();}
     HFONT font{}, smallFont{}, heading{}, title{};
     HBRUSH brush{};
     std::map<int, Control> controls;
@@ -59,7 +68,7 @@ public:
     void tick() {
         overlay.update(recorder.busy() && live->cameraEnabled?recorder.webcam():nullptr);
         if(recorder.busy()) {
-            RECT preview{px(24),px(244),px(310),px(510)};InvalidateRect(window,&preview,FALSE);
+            RECT preview{px(24),px(244),px(310),px(510)};if(!settingsOpen)InvalidateRect(window,&preview,FALSE);
             auto now=GetTickCount64();
             if(now-lastStatusPaint>=1000) {lastStatusPaint=now;RECT statusRect{px(24),px(546),px(976),px(570)};InvalidateRect(window,&statusRect,FALSE);}
         }
@@ -93,6 +102,12 @@ public:
     std::shared_ptr<Image const> displayed;
     static LRESULT CALLBACK controlProcedure(HWND hwnd,UINT message,WPARAM wp,LPARAM lp,UINT_PTR,DWORD_PTR) {
         if(message==WM_ERASEBKGND)return 1;
+        auto self=reinterpret_cast<App*>(GetWindowLongPtrW(GetParent(hwnd),GWLP_USERDATA));
+        if(self && (message==WM_MOUSEMOVE||message==WM_MOUSELEAVE)){
+            auto& c=self->controls.at(GetDlgCtrlID(hwnd));bool hot=message==WM_MOUSEMOVE;
+            if(c.hover!=hot){c.hover=hot;InvalidateRect(hwnd,nullptr,FALSE);}
+            if(hot){TRACKMOUSEEVENT track{sizeof(track),TME_LEAVE,hwnd,0};TrackMouseEvent(&track);}
+        }
         if(message==WM_NCDESTROY)RemoveWindowSubclass(hwnd,controlProcedure,2);
         return DefSubclassProc(hwnd,message,wp,lp);
     }
@@ -181,7 +196,7 @@ public:
                 OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY, DEFAULT_PITCH, L"Montserrat");
         };
         font = make(13, FW_NORMAL); smallFont = make(11, FW_NORMAL);
-        heading = make(12, FW_MEDIUM); title = make(23, FW_MEDIUM);
+        heading = make(12, FW_MEDIUM); title = make(18, FW_MEDIUM);
     }
     void add(int id, Kind kind, std::wstring label, int x, int y, int w, int h) {
         auto hwnd = CreateWindowExW(0, L"BUTTON", label.c_str(), WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_OWNERDRAW | BS_NOTIFY,
@@ -199,9 +214,9 @@ public:
         auto& c = controls.at(id);
         auto text = c.label;
         if (c.kind == Kind::Choice) text = c.items.empty() ? L"Нет доступных устройств" : c.items[c.selected];
-        else if (c.kind == Kind::Toggle) text += c.checked ? L": включено" : L": выключено";
+        else if (c.kind == Kind::Toggle) text=tr(text)+(c.checked?(english?L": on":L": включено"):(english?L": off":L": выключено"));
         else if(c.kind==Kind::Slider) text+=L" · "+std::to_wstring(c.selected)+L"%";
-        SetWindowTextW(c.window, text.c_str()); InvalidateRect(c.window, nullptr, TRUE);
+        text=tr(text);SetWindowTextW(c.window, text.c_str()); InvalidateRect(c.window, nullptr, FALSE);
     }
     void setChecked(int id, bool value) { controls.at(id).checked = value; updateText(id); }
     void refresh() {
@@ -270,6 +285,7 @@ public:
     void enabled() {
         bool idle = !recorder.busy() && !finishing;
         for (auto& [id, control] : controls) {
+            if(id>=OpenSettings || (id>=ThemeSystem && id<=ThemeDark))continue;
             if (id == Start || (id >= ThemeSystem && id <= ThemeDark)) continue;
             bool enable = idle || id==Microphone || id==Webcam || id==CameraMirror || id==SystemVolume || id==MicVolume || id==NoiseStrength || id==Denoise || id==Corner || id==Background || id==BackgroundPreset || id==BlurStrength;
             enable &= !finishing;
@@ -293,12 +309,41 @@ public:
         if(!std::filesystem::exists(executableDir()+L"\\models\\rvm_mobilenetv3_fp32.onnx")) {
             controls[BackgroundFile].label=modelDownload?L"Загрузка эффектов…":L"Загрузить эффекты фона (15 МБ)";updateText(BackgroundFile);
         } else if(backgroundPath.empty()) {controls[BackgroundFile].label=L"Выбрать своё изображение…";updateText(BackgroundFile);}
+        showPage();
+    }
+    bool settingControl(int id)const{return (id>=ThemeSystem&&id<=ThemeDark)||id==Language||id==SaveFolder||id==Back;}
+    void showPage(){
+        for(auto& [id,c]:controls){
+            bool visible=id==Minimize||id==Close||id==OpenSettings|| (settingsOpen?settingControl(id):!settingControl(id));
+            ShowWindow(c.window,visible?SW_SHOW:SW_HIDE);
+        }
+        InvalidateRect(window,nullptr,FALSE);
+    }
+    void changeLanguage(bool value){english=value;for(auto& [id,c]:controls)updateText(id);savePreferences();InvalidateRect(window,nullptr,FALSE);}
+    void savePreferences(){
+        if(testing)return;
+        HKEY key{};if(RegCreateKeyExW(HKEY_CURRENT_USER,preferencesKey.c_str(),0,nullptr,0,KEY_SET_VALUE,nullptr,&key,nullptr)==ERROR_SUCCESS){
+            DWORD value=english;RegSetValueExW(key,L"English",0,REG_DWORD,reinterpret_cast<BYTE*>(&value),sizeof(value));
+            RegSetValueExW(key,L"SaveFolder",0,REG_SZ,reinterpret_cast<BYTE const*>(saveFolder.c_str()),DWORD((saveFolder.size()+1)*sizeof(wchar_t)));RegCloseKey(key);
+        }
+    }
+    void selectFolder(){
+        ComPtr<IFileDialog> dialog;check(CoCreateInstance(CLSID_FileOpenDialog,nullptr,CLSCTX_INPROC_SERVER,IID_PPV_ARGS(&dialog)));
+        DWORD flags{};check(dialog->GetOptions(&flags));check(dialog->SetOptions(flags|FOS_PICKFOLDERS|FOS_FORCEFILESYSTEM|FOS_PATHMUSTEXIST));
+        auto title=tr(L"ПАПКА СОХРАНЕНИЯ");dialog->SetTitle(title.c_str());
+        if(SUCCEEDED(dialog->Show(window))){ComPtr<IShellItem> item;check(dialog->GetResult(&item));PWSTR name{};check(item->GetDisplayName(SIGDN_FILESYSPATH,&name));saveFolder=name;CoTaskMemFree(name);savePreferences();InvalidateRect(window,nullptr,FALSE);}
     }
     void create() {
         dpi = GetDpiForWindow(window); fonts();
-        add(ThemeSystem,Kind::Segment,L"Система",610,30,112,30);
-        add(ThemeLight,Kind::Segment,L"Светлая",730,30,112,30);
-        add(ThemeDark,Kind::Segment,L"Тёмная",850,30,126,30);
+        add(OpenSettings,Kind::Segment,L"Настройки",748,16,140,36);
+        add(Minimize,Kind::Segment,L"Свернуть",900,16,32,36);
+        add(Close,Kind::Segment,L"Закрыть",944,16,32,36);
+        add(Back,Kind::Button,L"Назад",24,580,160,36);
+        add(ThemeSystem,Kind::Segment,L"Система",24,160,148,36);
+        add(ThemeLight,Kind::Segment,L"Светлая",184,160,148,36);
+        add(ThemeDark,Kind::Segment,L"Тёмная",344,160,148,36);
+        add(Language,Kind::Choice,L"Язык",24,256,308,36);setItems(Language,{L"RU",L"EN"});controls[Language].selected=english?1:0;updateText(Language);
+        add(SaveFolder,Kind::Button,L"Выбрать папку…",24,400,308,36);
         add(SourceKind,Kind::Choice,L"Источник",24,128,178,34);setItems(SourceKind,{L"Запись экрана",L"Отдельное окно"});
         add(Refresh,Kind::Button,L"Обновить",214,128,96,34);
         add(Source,Kind::Choice,L"Экран / окно",24,172,286,34);
@@ -319,14 +364,20 @@ public:
         add(BackgroundPreset,Kind::Choice,L"Вариант",662,294,314,34);backgroundItems();
         add(BlurStrength,Kind::Slider,L"Размытие",662,336,314,54);controls[BlurStrength].selected=40;updateText(BlurStrength);
         add(BackgroundFile,Kind::Button,L"Выбрать своё изображение…",662,402,314,34);
-        add(Save,Kind::Button,L"Куда сохранить MP4…",24,580,250,38);
-        add(Start,Kind::Button,L"Начать запись",726,580,250,38);
+        add(Save,Kind::Button,L"Куда сохранить MP4…",24,580,250,36);
+        add(Start,Kind::Button,L"Начать запись",726,580,250,36);
+        // Keep the dense three-column layout; inputs share a 36px visual height.
+        for(auto const& [id,c]:controls)if(c.kind==Kind::Choice || (c.kind==Kind::Button&&id!=Start&&id!=Save)){
+            RECT r{};GetWindowRect(c.window,&r);MapWindowPoints(nullptr,window,reinterpret_cast<POINT*>(&r),2);
+            SetWindowPos(c.window,nullptr,r.left,r.top,r.right-r.left,px(36),SWP_NOZORDER);
+        }
         MONITORINFO monitor{sizeof(monitor)};GetMonitorInfoW(MonitorFromWindow(window,MONITOR_DEFAULTTONEAREST),&monitor);
         dpi=std::min<int>(dpi,std::min<long>((monitor.rcWork.right-monitor.rcWork.left-20)*96/1000,(monitor.rcWork.bottom-monitor.rcWork.top-50)*96/640));
         fonts();
         // Rescale children if a small desktop cannot fit the preferred system scale.
         int originalDpi=GetDpiForWindow(window);
         if(dpi!=originalDpi) for(auto const& [id,c]:controls) {RECT r{};GetWindowRect(c.window,&r);MapWindowPoints(nullptr,window,reinterpret_cast<POINT*>(&r),2);SetWindowPos(c.window,nullptr,MulDiv(r.left,dpi,originalDpi),MulDiv(r.top,dpi,originalDpi),MulDiv(r.right-r.left,dpi,originalDpi),MulDiv(r.bottom-r.top,dpi,originalDpi),SWP_NOZORDER);}
+        // Preserve the previous outer window footprint, including its former non-client area.
         RECT client{0,0,px(1000),px(640)};AdjustWindowRectExForDpi(&client,WS_OVERLAPPED|WS_CAPTION|WS_SYSMENU|WS_MINIMIZEBOX,FALSE,0,GetDpiForWindow(window));
         SetWindowPos(window,nullptr,0,0,client.right-client.left,client.bottom-client.top,SWP_NOMOVE|SWP_NOZORDER);
         scrollRange();
@@ -335,11 +386,11 @@ public:
     void text(HDC dc, std::wstring const& value, int x, int y, int w, int h, HFONT face, COLORREF color, UINT flags = DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS) {
         RECT r{px(x),px(y)-scroll,px(x+w),px(y+h)-scroll};
         SelectObject(dc, face); SetTextColor(dc, color); SetBkMode(dc, TRANSPARENT);
-        DrawTextW(dc, value.c_str(), -1, &r, flags);
+        auto translated=tr(value);DrawTextW(dc, translated.c_str(), -1, &r, flags);
     }
     void spaced(HDC dc, std::wstring const& value, int y, HFONT face, int spacing) {
         SelectObject(dc, face); SetTextColor(dc, palette.text); SetBkMode(dc, TRANSPARENT);
-        int x = px(76);
+        int x = px(24);
         for (wchar_t c : value) { SIZE size{}; GetTextExtentPoint32W(dc, &c, 1, &size); TextOutW(dc, x, px(y)-scroll, &c, 1); x += size.cx + px(spacing); }
     }
     void line(HDC dc, int y) {
@@ -349,10 +400,16 @@ public:
     void paint(HDC dc) {
         RECT r{}; GetClientRect(window, &r); FillRect(dc, &r, brush);
         spaced(dc, L"SCREENCAST.", 24, title, 2);
-        auto icon=static_cast<HICON>(LoadImageW(GetModuleHandleW(nullptr),MAKEINTRESOURCEW(101),IMAGE_ICON,px(40),px(40),0));
-        DrawIconEx(dc,px(24),px(22),icon,px(40),px(40),0,nullptr,DI_NORMAL);DestroyIcon(icon);
-        text(dc, L"Запись экрана · MP4", 76, 54, 480, 20, smallFont, palette.muted);
-        line(dc,86);
+        line(dc,62);
+        if(settingsOpen){
+            text(dc,L"Настройки",24,88,600,28,title,palette.text);
+            text(dc,L"ТЕМА",24,128,400,20,heading,palette.muted);
+            text(dc,L"ЯЗЫК",24,224,400,20,heading,palette.muted);
+            text(dc,L"ПАПКА СОХРАНЕНИЯ",24,320,600,20,heading,palette.muted);
+            text(dc,saveFolder,24,352,952,36,font,palette.text);
+            text(dc,L"Папка используется для новых записей. Файл MP4 можно выбрать перед записью.",24,452,700,48,smallFont,palette.muted,DT_WORDBREAK);
+            return;
+        }
         text(dc,L"ИСТОЧНИК ВИДЕО",24,100,286,20,heading,palette.text);
         text(dc,L"ЗВУК",336,100,300,20,heading,palette.text);
         text(dc,L"КАМЕРА И ФОН",662,100,314,20,heading,palette.text);
@@ -365,9 +422,16 @@ public:
             auto t = recorder.elapsed(); wchar_t duration[64]{};
             swprintf_s(duration, L"Запись · %02lld:%02lld:%02lld", t / 3600, t / 60 % 60, t % 60);
             label = duration;
-            label+=recorder.hardware()?L" · аппаратное кодирование":L" · программное кодирование";
+            label=tr(label);label+=tr(recorder.hardware()?L" · аппаратное кодирование":L" · программное кодирование");
         }
         text(dc, label, 24, 546, 952, 24, smallFont, palette.muted);
+        if(modelDownload||finishing){
+            auto track=CreateSolidBrush(palette.line),ink=CreateSolidBrush(palette.text);
+            RECT bar{px(662),px(532),px(976),px(536)};FillRect(dc,&bar,track);
+            BOOL motion=TRUE;SystemParametersInfoW(SPI_GETCLIENTAREAANIMATION,0,&motion,0);
+            int width=bar.right-bar.left,offset=motion?int(GetTickCount64()/15%std::max(1,width-width/3)):0;
+            bar.left+=offset;bar.right=bar.left+width/3;FillRect(dc,&bar,ink);DeleteObject(track);DeleteObject(ink);
+        }
         displayed=recorder.preview();
         RECT area{px(24),px(244),px(310),px(510)}; FillRect(dc,&area,brush);
         if(displayed && !displayed->empty()) {
@@ -389,24 +453,32 @@ public:
         FillRect(dc, &r, brush);
         if(control.kind==Kind::Slider) {
             SelectObject(dc,smallFont);SetBkMode(dc,TRANSPARENT);SetTextColor(dc,color);
-            auto label=control.label+L" · "+std::to_wstring(control.selected)+L"%";
+            auto label=tr(control.label)+L" · "+std::to_wstring(control.selected)+L"%";
             RECT labelRect{px(14),0,r.right-px(14),px(24)};DrawTextW(dc,label.c_str(),-1,&labelRect,DT_LEFT|DT_VCENTER|DT_SINGLELINE);
             int left=px(14),right=r.right-px(14),y=px(38),x=left+MulDiv(right-left,control.selected,control.maximum);
             auto pen=CreatePen(PS_SOLID,px(2),palette.line);auto before=SelectObject(dc,pen);
             MoveToEx(dc,left,y,nullptr);LineTo(dc,right,y);SelectObject(dc,before);DeleteObject(pen);
-            pen=CreatePen(PS_SOLID,px(3),color);before=SelectObject(dc,pen);MoveToEx(dc,left,y,nullptr);LineTo(dc,x,y);
-            auto fill=CreateSolidBrush(color);auto old=SelectObject(dc,fill);Ellipse(dc,x-px(5),y-px(5),x+px(5),y+px(5));
+            pen=CreatePen(PS_SOLID,px(2),color);before=SelectObject(dc,pen);MoveToEx(dc,left,y,nullptr);LineTo(dc,x,y);
+            auto fill=CreateSolidBrush(color);auto old=SelectObject(dc,fill);Ellipse(dc,x-px(6),y-px(6),x+px(6),y+px(6));
             SelectObject(dc,old);SelectObject(dc,before);DeleteObject(fill);DeleteObject(pen);return;
         }
         auto label = control.label;
         bool selectedTheme = item.CtlID >= ThemeSystem && static_cast<int>(item.CtlID) - ThemeSystem == theme;
         if (control.kind == Kind::Choice) label = control.items.empty() ? L"Нет доступных устройств" : control.items[control.selected];
+        label=tr(label);
+        if(item.CtlID==Minimize || item.CtlID==Close){
+            if(control.hover||pressed){auto fill=CreateSolidBrush(palette.hover);FillRect(dc,&r,fill);DeleteObject(fill);}
+            auto pen=CreatePen(PS_SOLID,px(1),palette.muted);auto before=SelectObject(dc,pen);int x=r.right/2,y=r.bottom/2;
+            if(item.CtlID==Minimize){MoveToEx(dc,x-px(5),y,nullptr);LineTo(dc,x+px(5),y);}
+            else{MoveToEx(dc,x-px(4),y-px(4),nullptr);LineTo(dc,x+px(4),y+px(4));MoveToEx(dc,x+px(4),y-px(4),nullptr);LineTo(dc,x-px(4),y+px(4));}
+            SelectObject(dc,before);DeleteObject(pen);return;
+        }
         bool primary = item.CtlID == Start;
         auto pen = CreatePen(PS_SOLID, 1, palette.line);
-        auto fill = CreateSolidBrush(primary && !disabled ? palette.active : pressed ? palette.hover : palette.background);
+        auto fill = CreateSolidBrush(primary && !disabled ? palette.active : (pressed||control.hover) ? palette.hover : palette.background);
         auto oldPen = SelectObject(dc, pen), oldBrush = SelectObject(dc, fill);
         if (control.kind != Kind::Toggle && (control.kind != Kind::Segment || selectedTheme))
-            RoundRect(dc, r.left, r.top, r.right - 1, r.bottom - 1, px(20), px(20));
+            RoundRect(dc, r.left, r.top, r.right - 1, r.bottom - 1, px(16), px(16));
         SelectObject(dc, font); SetBkMode(dc, TRANSPARENT);
         SetTextColor(dc, primary && !disabled ? palette.buttonText : color);
         auto labelRect = r; labelRect.left += px(control.kind == Kind::Toggle ? 0 : 14); labelRect.right -= px(14);
@@ -418,7 +490,11 @@ public:
             int x = r.right - px(20), y = (r.top+r.bottom)/2;
             MoveToEx(dc, x-px(4), y-px(2), nullptr); LineTo(dc, x, y+px(2)); LineTo(dc, x+px(4), y-px(2));
         }
-        if(control.kind==Kind::Toggle) drawSwitch(dc,r.right-px(38),(r.bottom-r.top-px(20))/2,px(38),px(20),control.checked,dark);
+        if(control.kind==Kind::Toggle) drawSwitch(dc,r.right-px(40),(r.bottom-r.top-px(23))/2,px(40),px(23),control.checked,dark);
+        if((item.itemState&ODS_FOCUS)&&!(item.itemState&ODS_NOFOCUSRECT)){
+            auto focus=CreatePen(PS_SOLID,px(2),palette.text);auto previous=SelectObject(dc,focus),b=SelectObject(dc,GetStockObject(NULL_BRUSH));
+            RoundRect(dc,px(2),px(2),r.right-px(2),r.bottom-px(2),px(16),px(16));SelectObject(dc,previous);SelectObject(dc,b);DeleteObject(focus);
+        }
         SelectObject(dc, oldBrush); SelectObject(dc, oldPen); DeleteObject(fill); DeleteObject(pen);
     }
     std::wstring choose(bool save, wchar_t const* filter) {
@@ -426,10 +502,12 @@ public:
         if (save) {
             SYSTEMTIME time{}; GetLocalTime(&time);
             swprintf_s(buffer, L"Screencast-%04u-%02u-%02u-%02u-%02u-%02u.mp4", time.wYear, time.wMonth, time.wDay, time.wHour, time.wMinute, time.wSecond);
+            if(!saveFolder.empty()){auto initial=(std::filesystem::path(saveFolder)/buffer).wstring();wcscpy_s(buffer,initial.c_str());}
         }
         OPENFILENAMEW file{}; file.lStructSize = sizeof(file); file.hwndOwner = window;
         file.lpstrFilter = filter; file.lpstrFile = buffer; file.nMaxFile = 32768;
         file.lpstrDefExt = save ? L"mp4" : nullptr;
+        if(save&&!saveFolder.empty())file.lpstrInitialDir=saveFolder.c_str();
         file.Flags = OFN_EXPLORER | OFN_NOCHANGEDIR | OFN_PATHMUSTEXIST | (save ? OFN_OVERWRITEPROMPT : OFN_FILEMUSTEXIST);
         bool ok = save ? GetSaveFileNameW(&file) != FALSE : GetOpenFileNameW(&file) != FALSE;
         if (!ok && CommDlgExtendedError()) throw winrt::hresult_error(E_FAIL, L"Не удалось открыть диалог выбора файла");
@@ -472,6 +550,10 @@ public:
         recorder.start(settings, window); enabled();
     }
     void command(int id) {
+        if(id==OpenSettings||id==Back){settingsOpen=id==OpenSettings?!settingsOpen:false;showPage();SetFocus(controls[settingsOpen?Back:OpenSettings].window);return;}
+        if(id==Minimize){ShowWindow(window,SW_MINIMIZE);return;}
+        if(id==Close){SendMessageW(window,WM_CLOSE,0,0);return;}
+        if(id==SaveFolder){selectFolder();return;}
         if (id >= ThemeSystem && id <= ThemeDark) {
             theme = id - ThemeSystem; applyTheme(); saveTheme(); return;
         }
@@ -480,16 +562,17 @@ public:
             if (control.items.empty()) return;
             RECT r{}; GetWindowRect(control.window, &r);
             // Copy the choices: device refresh messages may arrive while the popup is open.
-            auto choices=control.items;
+            auto choices=control.items;for(auto& value:choices)value=tr(value);
             Dropdown list(choices,font,dpi,control.selected,palette.background,palette.text,palette.line,palette.hover);
             auto picked=list.show(window,r);
             if(!IsWindow(window))return;
             if (picked) {
                 if(id==Background && picked==6 && recorder.busy() && backgroundPath.empty()) {
-                    MessageBoxW(window,L"Сначала выберите своё изображение до начала записи.",L"Screencast",MB_OK);return;
+                    notice(L"Сначала выберите своё изображение до начала записи.");return;
                 }
                 if(id==Background && picked>1 && !std::filesystem::exists(executableDir()+L"\\models\\rvm_mobilenetv3_fp32.onnx")) {installModel(picked-1);return;}
                 control.selected = picked - 1; updateText(id);
+                if(id==Language){changeLanguage(control.selected==1);return;}
                 if (id == SourceKind) sourceItems();
                 if (id == OutputMode) outputItems();
                 if(id==Background) backgroundItems();
@@ -512,14 +595,43 @@ public:
         } else if (id == Start) start();
     }
     void saveTheme() {
+        if(testing)return;
         HKEY key{};
-        if (RegCreateKeyExW(HKEY_CURRENT_USER, L"Software\\Screencast", 0, nullptr, 0, KEY_SET_VALUE, nullptr, &key, nullptr) == ERROR_SUCCESS) {
+        if (RegCreateKeyExW(HKEY_CURRENT_USER, preferencesKey.c_str(), 0, nullptr, 0, KEY_SET_VALUE, nullptr, &key, nullptr) == ERROR_SUCCESS) {
             DWORD value = theme; RegSetValueExW(key, L"Theme", 0, REG_DWORD, reinterpret_cast<BYTE*>(&value), sizeof(value)); RegCloseKey(key);
         }
     }
     void readTheme() {
         DWORD value{}, size = sizeof(value);
-        if (RegGetValueW(HKEY_CURRENT_USER, L"Software\\Screencast", L"Theme", RRF_RT_REG_DWORD, nullptr, &value, &size) == ERROR_SUCCESS && value <= 2) theme = value;
+        if (RegGetValueW(HKEY_CURRENT_USER, preferencesKey.c_str(), L"Theme", RRF_RT_REG_DWORD, nullptr, &value, &size) == ERROR_SUCCESS && value <= 2) theme = value;
+        size=sizeof(value);value=0;if(RegGetValueW(HKEY_CURRENT_USER,preferencesKey.c_str(),L"English",RRF_RT_REG_DWORD,nullptr,&value,&size)==ERROR_SUCCESS)english=value==1;
+        wchar_t folder[32768]{};size=sizeof(folder);if(RegGetValueW(HKEY_CURRENT_USER,preferencesKey.c_str(),L"SaveFolder",RRF_RT_REG_SZ,nullptr,folder,&size)==ERROR_SUCCESS)saveFolder=folder;
+        if(saveFolder.empty()){PWSTR name{};if(SUCCEEDED(SHGetKnownFolderPath(FOLDERID_Videos,0,nullptr,&name))){saveFolder=name;CoTaskMemFree(name);}}
+    }
+    void uiTest(std::filesystem::path const& directory){
+        auto require=[](bool value,wchar_t const* why){if(!value)throw winrt::hresult_error(E_FAIL,why);};
+        RECT outer{};GetWindowRect(window,&outer);
+        RECT expected{0,0,px(1000),px(640)};AdjustWindowRectExForDpi(&expected,WS_OVERLAPPED|WS_CAPTION|WS_SYSMENU|WS_MINIMIZEBOX,FALSE,0,GetDpiForWindow(window));
+        require(outer.right-outer.left==expected.right-expected.left && outer.bottom-outer.top==expected.bottom-expected.top,L"Outer window footprint changed");
+        auto style=GetWindowLongPtrW(window,GWL_STYLE);require(!(style&WS_CAPTION)&&!(style&WS_MAXIMIZEBOX),L"Native caption or maximize remains");
+        auto before=outer;SendMessageW(window,WM_SYSCOMMAND,SC_MAXIMIZE,0);GetWindowRect(window,&outer);require(EqualRect(&before,&outer),L"Maximize changed the fixed window");
+        auto header=MAKELPARAM(outer.left+px(300),outer.top+px(24));require(SendMessageW(window,WM_NCHITTEST,0,header)==HTCAPTION,L"Custom header cannot drag");
+        command(Minimize);require(IsIconic(window),L"Custom minimize failed");SingleInstance::activate(window);require(!IsIconic(window),L"Restore failed");
+        command(OpenSettings);require(settingsOpen,L"Settings did not open");
+        require((GetWindowLongPtrW(controls[Language].window,GWL_STYLE)&WS_VISIBLE)!=0 && !(GetWindowLongPtrW(controls[Source].window,GWL_STYLE)&WS_VISIBLE),L"Settings visibility is incorrect");
+        auto source=controls[SourceKind].selected;auto mic=live->micEnabled.load();auto camera=live->cameraEnabled.load();
+        preferencesKey=L"Software\\ScreencastUITest-"+std::to_wstring(GetCurrentProcessId());testing=false;
+        try{
+            for(int id:{ThemeLight,ThemeDark,ThemeSystem}){command(id);require(theme==id-ThemeSystem,L"Theme control is inert");if(id!=ThemeSystem)require(dark==(id==ThemeDark),L"Explicit theme did not apply");}
+            controls[Language].selected=1;changeLanguage(true);require(tr(L"Начать запись")==L"Start recording",L"Language does not translate");
+            saveFolder=(directory/L"recordings").wstring();savePreferences();App loaded;loaded.preferencesKey=preferencesKey;loaded.readTheme();
+            require(loaded.english&&loaded.theme==0&&loaded.saveFolder==saveFolder,L"Settings do not persist");
+            controls[Language].selected=0;changeLanguage(false);require(tr(L"Настройки")==L"Настройки",L"Language cannot return to RU");
+            command(Back);require(!settingsOpen && controls[SourceKind].selected==source&&live->micEnabled.load()==mic&&live->cameraEnabled.load()==camera,L"UI settings changed capture state");
+            require(!(GetWindowLongPtrW(controls[ThemeDark].window,GWL_STYLE)&WS_VISIBLE),L"Theme controls remain on the main screen");
+        }catch(...){RegDeleteTreeW(HKEY_CURRENT_USER,preferencesKey.c_str());testing=true;throw;}
+        RegDeleteTreeW(HKEY_CURRENT_USER,preferencesKey.c_str());testing=true;
+        std::ofstream report(directory/L"ui-system.txt");report<<"PASS: fixed outer size, custom header/drag/minimize/restore, maximize blocked; settings visibility; RU/EN and all theme modes; isolated registry persistence for language/theme/save folder; unchanged capture selections and live settings.\n";
     }
     void snapshot() {
         for(int scale:{96,144,192}) for(int kind:{ICON_SMALL,ICON_SMALL2,ICON_BIG}) {
@@ -539,6 +651,7 @@ public:
         // PrintWindow returns black for hidden windows on some Windows runners.
         paint(mem);
         for (auto const& [id, c] : controls) {
+            if(!(GetWindowLongPtrW(c.window,GWL_STYLE)&WS_VISIBLE))continue;
             RECT rect{}; GetWindowRect(c.window, &rect);
             MapWindowPoints(nullptr, window, reinterpret_cast<POINT*>(&rect), 2);
             auto saved = SaveDC(mem); SetViewportOrgEx(mem, rect.left, rect.top, nullptr);
@@ -546,7 +659,8 @@ public:
             DRAWITEMSTRUCT item{};
             item.CtlID = id; item.hwndItem = c.window; item.hDC = mem; item.itemAction = ODA_DRAWENTIRE;
             item.itemState = IsWindowEnabled(c.window) ? 0 : ODS_DISABLED;
-            if(mouseFocusSnapshot)item.itemState|=ODS_FOCUS;
+            if(mouseFocusSnapshot)item.itemState|=ODS_FOCUS|ODS_NOFOCUSRECT;
+            if(keyboardFocusSnapshot&&id==Start)item.itemState|=ODS_FOCUS;
             item.rcItem = {0,0,rect.right-rect.left,rect.bottom-rect.top};
             draw(item); RestoreDC(mem, saved);
         }
@@ -574,7 +688,10 @@ LRESULT CALLBACK procedure(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam
     try {
         if(message==SingleInstance::activationMessage()){SingleInstance::activate(hwnd);return 1;}
         switch (message) {
-        case WM_CREATE: app->window = hwnd; app->create(); return 0;
+        case WM_CREATE: app->window = hwnd;SetWindowLongPtrW(hwnd,GWLP_USERDATA,reinterpret_cast<LONG_PTR>(app));app->create(); return 0;
+        case WM_NCCALCSIZE:return 0;
+        case WM_NCHITTEST:{auto hit=DefWindowProcW(hwnd,message,wParam,lParam);POINT p{GET_X_LPARAM(lParam),GET_Y_LPARAM(lParam)};ScreenToClient(hwnd,&p);return hit==HTCLIENT&&p.y<app->px(62)?HTCAPTION:hit;}
+        case WM_SYSCOMMAND:if((wParam&0xfff0)==SC_MAXIMIZE)return 0;break;
         case WM_GETICON:return reinterpret_cast<LRESULT>(app->windowIcon(wParam,lParam));
         case WM_COMMAND:
             if (LOWORD(wParam) == IDCANCEL) { SendMessageW(hwnd, WM_CLOSE, 0, 0); return 0; }
@@ -632,7 +749,7 @@ LRESULT CALLBACK procedure(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam
             if (result->success) app->path.clear();
             app->enabled();
             if (app->closing) DestroyWindow(hwnd);
-            else if (!result->success && !result->cancelled) MessageBoxW(hwnd, (result->message + (result->path.empty() ? L"" : L"\n" + result->path)).c_str(), L"Screencast", MB_OK | MB_ICONERROR);
+            else if (!result->success && !result->cancelled) app->notice(result->message + (result->path.empty() ? L"" : L"\n" + result->path));
             return 0;
         }
         case WM_CLOSE:
@@ -644,7 +761,7 @@ LRESULT CALLBACK procedure(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam
         case WM_DESTROY: KillTimer(hwnd, 1); PostQuitMessage(0); return 0;
         }
     } catch (...) {
-        MessageBoxW(hwnd, errorText().c_str(), L"Screencast", MB_OK | MB_ICONERROR);
+        app->notice(errorText());
         if (message == WM_CREATE) return -1;
     }
     return DefWindowProcW(hwnd, message, wParam, lParam);
@@ -657,7 +774,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int show) {
         int argc{}; auto argv = CommandLineToArgvW(GetCommandLineW(), &argc);
         std::vector<std::wstring> args; for (int i = 0; i < argc; ++i) args.emplace_back(argv[i]); LocalFree(argv);
         std::unique_ptr<SingleInstance> instanceGuard;
-        bool diagnosticMode=args.size()>1 && (args[1]==L"--self-test" || args[1]==L"--model-test" || args[1]==L"--camera-test" || args[1]==L"--overlay-test" || args[1]==L"--live-device-test" || args[1]==L"--dropdown-test" || args[1]==L"--idle-paint-test" || args[1]==L"--snapshot-light" || args[1]==L"--snapshot-dark");
+        bool diagnosticMode=args.size()>1 && (args[1]==L"--ui-test" || args[1]==L"--self-test" || args[1]==L"--model-test" || args[1]==L"--camera-test" || args[1]==L"--overlay-test" || args[1]==L"--live-device-test" || args[1]==L"--dropdown-test" || args[1]==L"--idle-paint-test" || args[1]==L"--snapshot-light" || args[1]==L"--snapshot-dark");
         if(!diagnosticMode){instanceGuard=std::make_unique<SingleInstance>();if(!instanceGuard->acquire()){Gdiplus::GdiplusShutdown(gdiplus);return 0;}}
         winrt::init_apartment(winrt::apartment_type::single_threaded);
         if(!diagnosticMode)check(SetCurrentProcessExplicitAppUserModelID(L"SanderStripa.Screencast"));
@@ -671,7 +788,8 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int show) {
             else { Camera::testModel(); result = 0; }
             MFShutdown(); winrt::uninit_apartment(); return result;
         }
-        App state; app = &state; state.readTheme();
+        App state; app = &state;state.testing=diagnosticMode; state.readTheme();
+        if(args.size()>=3&&args[1]==L"--ui-test"){std::filesystem::create_directories(args[2]);diagnostics=args[2]+L"\\ui-error.txt";show=SW_SHOWNOACTIVATE;}
         if(args.size()>=3 && args[1]==L"--idle-paint-test"){state.idleTestPath=args[2];state.theme=2;show=SW_SHOWNOACTIVATE;}
         auto fontPath = executableDir() + L"\\assets\\Montserrat.ttf";
         AddFontResourceExW(fontPath.c_str(), FR_PRIVATE, nullptr);
@@ -703,16 +821,21 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int show) {
             state.theme = args[1] == L"--snapshot-dark" ? 2 : 1; state.snapshotPath = args[2];
             state.mouseFocusSnapshot=args.size()>=4 && args[3]==L"mouse-focus";
             state.dropdownSnapshot=args.size()>=4 && args[3]==L"dropdown";
+            state.settingsSnapshot=args.size()>=4 && args[3]==L"settings";
+            state.keyboardFocusSnapshot=args.size()>=4 && args[3]==L"keyboard-focus";
+            state.english=args.size()>=5 && args[4]==L"en";
         }
         WNDCLASSEXW cls{sizeof(cls)}; cls.lpfnWndProc = procedure; cls.hInstance = instance;
         cls.hCursor=LoadCursorW(nullptr,IDC_ARROW);cls.hIcon=LoadIconW(instance,MAKEINTRESOURCEW(101));cls.hIconSm=cls.hIcon;
         cls.lpszClassName = L"ScreencastWindow"; RegisterClassExW(&cls);
         auto hwnd = CreateWindowExW(0, cls.lpszClassName, L"Screencast",
-            WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX | WS_CLIPCHILDREN, CW_USEDEFAULT, CW_USEDEFAULT, 1040, 700, nullptr, nullptr, instance, nullptr);
+            WS_POPUP | WS_SYSMENU | WS_MINIMIZEBOX | WS_CLIPCHILDREN, CW_USEDEFAULT, CW_USEDEFAULT, 1040, 700, nullptr, nullptr, instance, nullptr);
         if (!hwnd) check(HRESULT_FROM_WIN32(GetLastError()));
+        if(state.settingsSnapshot){state.settingsOpen=true;state.showPage();}
         SendMessageW(hwnd,WM_SETICON,ICON_BIG,reinterpret_cast<LPARAM>(state.windowIcon(ICON_BIG,0)));
         SendMessageW(hwnd,WM_SETICON,ICON_SMALL,reinterpret_cast<LPARAM>(state.windowIcon(ICON_SMALL2,0)));
         ShowWindow(hwnd, show); UpdateWindow(hwnd);
+        if(args.size()>=3&&args[1]==L"--ui-test"){state.uiTest(args[2]);DestroyWindow(hwnd);}
         if(instanceGuard)instanceGuard->markReady();
         if (!state.snapshotPath.empty()) SetTimer(hwnd, 2, 1000, nullptr);
         if(!state.idleTestPath.empty())SetTimer(hwnd,3,1000,nullptr);

@@ -16,6 +16,16 @@ for name, expected in (("light", (247, 247, 245)), ("dark", (11, 11, 12))):
     images.append(image)
     focused=np.array(Image.open(root/f'theme-{name}-mouse-focus.png').convert('RGB'))
     assert np.array_equal(image,focused), 'A focused control adds an unwanted outline'
+    keyboard=np.array(Image.open(root/f'theme-{name}-keyboard-focus.png').convert('RGB'))
+    assert not np.array_equal(image[580:616,726:976],keyboard[580:616,726:976]), 'Keyboard focus is not visible'
+    settings=np.array(Image.open(root/f'theme-{name}-settings.png').convert('RGB'))
+    settings_en=np.array(Image.open(root/f'theme-{name}-settings-en.png').convert('RGB'))
+    main_en=np.array(Image.open(root/f'theme-{name}-en.png').convert('RGB'))
+    assert settings.shape==image.shape==main_en.shape, 'Settings resized the application'
+    assert np.max(abs(settings[8,8].astype(int)-np.array(expected)))<=1, 'Settings changed the palette'
+    assert np.std(settings[128:196,24:492])>10 and np.std(settings[320:436,24:332])>10, 'Settings lack theme or save folder controls'
+    assert not np.array_equal(settings[88:500,24:700],settings_en[88:500,24:700]), 'RU/EN settings do not change'
+    assert not np.array_equal(image[100:522,24:976],main_en[100:522,24:976]), 'RU/EN main UI does not change'
     dropdown=np.array(Image.open(root/f'theme-{name}-dropdown.png').convert('RGB'))
     assert np.max(abs(dropdown[168, 630].astype(int)-np.array(expected)))<=1, 'Dropdown uses the system menu background'
     assert not np.array_equal(image[160:274,336:636],dropdown[160:274,336:636]), 'Dropdown was not rendered'
