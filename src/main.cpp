@@ -490,7 +490,11 @@ public:
             auto pen=CreatePen(PS_SOLID,px(1),palette.muted);auto before=SelectObject(dc,pen);int x=r.right/2,y=r.bottom/2;
             if(item.CtlID==Minimize){MoveToEx(dc,x-px(5),y,nullptr);LineTo(dc,x+px(5),y);}
             else{MoveToEx(dc,x-px(4),y-px(4),nullptr);LineTo(dc,x+px(4),y+px(4));MoveToEx(dc,x+px(4),y-px(4),nullptr);LineTo(dc,x-px(4),y+px(4));}
-            SelectObject(dc,before);DeleteObject(pen);return;
+            SelectObject(dc,before);DeleteObject(pen);
+            if((item.itemState&ODS_FOCUS)&&!(item.itemState&ODS_NOFOCUSRECT)){
+                auto outline=CreatePen(PS_SOLID,px(2),palette.text);auto a=SelectObject(dc,outline),b=SelectObject(dc,GetStockObject(NULL_BRUSH));
+                RoundRect(dc,px(2),px(2),r.right-px(2),r.bottom-px(2),px(8),px(8));SelectObject(dc,a);SelectObject(dc,b);DeleteObject(outline);
+            }return;
         }
         bool primary = item.CtlID == Start;
         auto pen = CreatePen(PS_SOLID, 1, palette.line);
@@ -503,6 +507,7 @@ public:
         auto labelRect = r; labelRect.left += px(control.kind == Kind::Toggle ? 0 : 14); labelRect.right -= px(14);
         if (control.kind == Kind::Toggle) labelRect.right -= px(60);
         if (control.kind == Kind::Choice) labelRect.right -= px(20);
+        if(pressed&&control.kind==Kind::Button)OffsetRect(&labelRect,0,px(1));
         DrawTextW(dc, label.c_str(), -1, &labelRect, DT_SINGLELINE | DT_VCENTER | DT_END_ELLIPSIS |
             ((control.kind == Kind::Button || control.kind == Kind::Segment) ? DT_CENTER : DT_LEFT));
         if (control.kind == Kind::Choice) {
