@@ -21,6 +21,8 @@
 #include "ui_language.h"
 #include "ui_notice.h"
 #include "settings_icon.h"
+#include "ui_palette.h"
+#include "vpn_icons.h"
 
 int encoderSelfTest(std::wstring const& directory);
 int cameraSelfTest(std::wstring const& directory);
@@ -30,20 +32,20 @@ namespace {
 enum Id { SourceKind = 100, Source, Refresh, OutputMode, OutputDevice, Microphone, MicDevice,
     Denoise, Webcam, CameraDevice, Corner, Background, BackgroundFile, Save, Start, ThemeSystem, ThemeLight, ThemeDark,
     SystemVolume,MicVolume,NoiseStrength,BlurStrength,BackgroundPreset,CameraMirror,
-    OpenSettings,Back,Language,SaveFolder,Minimize,Close };
+    OpenSettings,Back,Language,SaveFolder,Minimize,Close,LanguageEnglish };
 enum class Kind { Button, Choice, Toggle, Segment, Slider };
 struct Control {
     HWND window{}; Kind kind{}; std::wstring label;
     std::vector<std::wstring> items; int selected{}; bool checked{}; int maximum{100}; bool hover{};
     float hot{},from{};ULONGLONG transition{};
 };
-struct Palette { COLORREF background, text, muted, line, hover, active, buttonText; };
 class App {
 public:
     HWND window{};
     int dpi{96}, theme{}, scroll{};
     bool dark{}, closing{}, finishing{};
     bool english{},settingsOpen{},settingsSnapshot{},keyboardFocusSnapshot{},testing{};
+    bool windowHoverSnapshot{},cornersApplied{};
     std::wstring saveFolder;
     std::wstring preferencesKey{L"Software\\Screencast"};
     unsigned noticePumps{};
@@ -172,6 +174,11 @@ public:
     }
 
     int px(int value) const { return MulDiv(value, dpi, 96); }
+    void layoutChrome(){
+        if(!controls.contains(Close))return;RECT r{};GetClientRect(window,&r);
+        SetWindowPos(controls[Close].window,nullptr,r.right-px(50),px(16),px(28),px(30),SWP_NOZORDER|SWP_NOACTIVATE);
+        SetWindowPos(controls[Minimize].window,nullptr,r.right-px(86),px(16),px(28),px(30),SWP_NOZORDER|SWP_NOACTIVATE);
+    }
     void scrollTo(int position) {
         RECT r{}; GetClientRect(window, &r);
         position = 0;
@@ -198,10 +205,11 @@ public:
         RegGetValueW(HKEY_CURRENT_USER, L"Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize",
             L"AppsUseLightTheme", RRF_RT_REG_DWORD, nullptr, &light, &size);
         dark = theme == 2 || (theme == 0 && !light);
-        palette = dark ? Palette{RGB(11,11,12), RGB(237,237,235), RGB(146,150,158), RGB(49,52,57), RGB(23,24,27), RGB(237,237,235), RGB(11,11,12)} :
-            Palette{RGB(247,247,245), RGB(16,24,36), RGB(119,126,137), RGB(218,221,221), RGB(237,238,236), RGB(16,24,36), RGB(247,247,245)};
+        palette = vpnPalette(dark);
         if (brush) DeleteObject(brush); brush = CreateSolidBrush(palette.background);
         BOOL useDark = dark; DwmSetWindowAttribute(window, DWMWA_USE_IMMERSIVE_DARK_MODE, &useDark, sizeof(useDark));
+        DWM_WINDOW_CORNER_PREFERENCE corners=DWMWCP_ROUND;
+        cornersApplied=SUCCEEDED(DwmSetWindowAttribute(window,DWMWA_WINDOW_CORNER_PREFERENCE,&corners,sizeof(corners)));
         for (auto [id, value] : controls) InvalidateRect(value.window, nullptr, TRUE);
         InvalidateRect(window, nullptr, TRUE);
     }
@@ -327,7 +335,7 @@ public:
         } else if(backgroundPath.empty()) {controls[BackgroundFile].label=L"Выбрать своё изображение…";updateText(BackgroundFile);}
         showPage();
     }
-    bool settingControl(int id)const{return (id>=ThemeSystem&&id<=ThemeDark)||id==Language||id==SaveFolder||id==Back;}
+    bool settingControl(int id)const{return (id>=ThemeSystem&&id<=ThemeDark)||id==Language||id==LanguageEnglish||id==SaveFolder||id==Back;}
     void showPage(){
         for(auto& [id,c]:controls){
             bool visible=id==Minimize||id==Close||id==OpenSettings|| (settingsOpen?settingControl(id):!settingControl(id));
@@ -352,14 +360,15 @@ public:
     void create() {
         dpi = GetDpiForWindow(window); fonts();
         add(OpenSettings,Kind::Segment,L"Настройки",848,16,36,36);
-        add(Minimize,Kind::Segment,L"Свернуть",900,16,32,36);
-        add(Close,Kind::Segment,L"Закрыть",944,16,32,36);
+        add(Minimize,Kind::Segment,L"Свернуть",912,16,28,30);
+        add(Close,Kind::Segment,L"Закрыть",948,16,28,30);
         add(Back,Kind::Button,L"Назад",24,580,160,36);
-        add(ThemeSystem,Kind::Segment,L"Система",24,160,148,36);
-        add(ThemeLight,Kind::Segment,L"Светлая",184,160,148,36);
-        add(ThemeDark,Kind::Segment,L"Тёмная",344,160,148,36);
-        add(Language,Kind::Choice,L"Язык",24,256,308,36);setItems(Language,{L"RU",L"EN"});controls[Language].selected=english?1:0;updateText(Language);
-        add(SaveFolder,Kind::Button,L"Выбрать папку…",24,400,308,36);
+        add(Language,Kind::Segment,L"RU",312,140,32,28);
+        add(LanguageEnglish,Kind::Segment,L"EN",348,140,32,28);
+        add(ThemeSystem,Kind::Segment,L"Система",24,176,116,32);
+        add(ThemeLight,Kind::Segment,L"Светлая",144,176,116,32);
+        add(ThemeDark,Kind::Segment,L"Тёмная",264,176,116,32);
+        add(SaveFolder,Kind::Button,L"Выбрать папку…",24,324,308,36);
         add(SourceKind,Kind::Choice,L"Источник",24,128,178,34);setItems(SourceKind,{L"Запись экрана",L"Отдельное окно"});
         add(Refresh,Kind::Button,L"Обновить",214,128,96,34);
         add(Source,Kind::Choice,L"Экран / окно",24,172,286,34);
@@ -396,6 +405,7 @@ public:
         // Preserve the previous outer window footprint, including its former non-client area.
         RECT client{0,0,px(1000),px(640)};AdjustWindowRectExForDpi(&client,WS_OVERLAPPED|WS_CAPTION|WS_SYSMENU|WS_MINIMIZEBOX,FALSE,0,GetDpiForWindow(window));
         SetWindowPos(window,nullptr,0,0,client.right-client.left,client.bottom-client.top,SWP_NOMOVE|SWP_NOZORDER);
+        layoutChrome();
         scrollRange();
         refresh(); applyTheme(); SetTimer(window, 1, 33, nullptr);
     }
@@ -419,11 +429,13 @@ public:
         line(dc,62);
         if(settingsOpen){
             text(dc,L"Настройки",24,88,600,28,title,palette.text);
-            text(dc,L"ТЕМА",24,128,400,20,heading,palette.muted);
-            text(dc,L"ЯЗЫК",24,224,400,20,heading,palette.muted);
-            text(dc,L"ПАПКА СОХРАНЕНИЯ",24,320,600,20,heading,palette.muted);
-            text(dc,saveFolder,24,352,952,36,font,palette.text);
-            text(dc,L"Папка используется для новых записей. Файл MP4 можно выбрать перед записью.",24,452,700,48,smallFont,palette.muted,DT_WORDBREAK);
+            auto pen=CreatePen(PS_SOLID,1,palette.line);auto previous=SelectObject(dc,pen);
+            for(int y:{128,220}){MoveToEx(dc,px(24),px(y),nullptr);LineTo(dc,px(380),px(y));}SelectObject(dc,previous);DeleteObject(pen);
+            drawVpnIcon(dc,VpnIcon::Palette,px(24),px(145),px(17),palette.muted);
+            text(dc,L"ВНЕШНИЙ ВИД",51,140,248,28,smallFont,palette.text);
+            text(dc,L"ПАПКА СОХРАНЕНИЯ",24,244,600,20,heading,palette.muted);
+            text(dc,saveFolder,24,276,952,36,font,palette.text);
+            text(dc,L"Папка используется для новых записей. Файл MP4 можно выбрать перед записью.",24,372,700,48,smallFont,palette.muted,DT_WORDBREAK);
             return;
         }
         text(dc,L"ИСТОЧНИК ВИДЕО",24,100,286,20,heading,palette.text);
@@ -492,11 +504,22 @@ public:
         if (control.kind == Kind::Choice) label = control.items.empty() ? L"Нет доступных устройств" : control.items[control.selected];
         label=tr(label);
         if(item.CtlID==Minimize || item.CtlID==Close){
-            if(control.hot>0||pressed){auto fill=CreateSolidBrush(blend(palette.background,palette.hover,pressed?1.f:control.hot));FillRect(dc,&r,fill);DeleteObject(fill);}
-            auto pen=CreatePen(PS_SOLID,px(1),palette.muted);auto before=SelectObject(dc,pen);int x=r.right/2,y=r.bottom/2;
-            if(item.CtlID==Minimize){MoveToEx(dc,x-px(5),y,nullptr);LineTo(dc,x+px(5),y);}
-            else{MoveToEx(dc,x-px(4),y-px(4),nullptr);LineTo(dc,x+px(4),y+px(4));MoveToEx(dc,x+px(4),y-px(4),nullptr);LineTo(dc,x-px(4),y+px(4));}
-            SelectObject(dc,before);DeleteObject(pen);
+            drawVpnIcon(dc,item.CtlID==Minimize?VpnIcon::Minus:VpnIcon::X,(r.right-px(15))/2,(r.bottom-px(15))/2,px(15),blend(palette.muted,palette.text,control.hot));
+            return;
+        }
+        bool themeButton=item.CtlID>=ThemeSystem&&item.CtlID<=ThemeDark;
+        bool languageButton=item.CtlID==Language||item.CtlID==LanguageEnglish;
+        if(themeButton||languageButton){
+            bool selected=themeButton?int(item.CtlID)-ThemeSystem==theme:(item.CtlID==LanguageEnglish?english:!english);
+            auto stroke=CreatePen(PS_SOLID,1,selected&&themeButton?palette.muted:palette.line);
+            auto fill=CreateSolidBrush(selected?palette.hover:palette.background);auto a=SelectObject(dc,stroke),b=SelectObject(dc,fill);
+            RoundRect(dc,0,0,r.right-1,r.bottom-1,px(16),px(16));SelectObject(dc,a);SelectObject(dc,b);DeleteObject(stroke);DeleteObject(fill);
+            COLORREF ink=selected?palette.text:palette.muted;SelectObject(dc,smallFont);SetBkMode(dc,TRANSPARENT);SetTextColor(dc,ink);
+            RECT textRect=r;
+            if(themeButton){SIZE extent{};GetTextExtentPoint32W(dc,label.c_str(),int(label.size()),&extent);
+                int left=(r.right-extent.cx-px(18))/2;drawVpnIcon(dc,item.CtlID==ThemeSystem?VpnIcon::Monitor:item.CtlID==ThemeLight?VpnIcon::Sun:VpnIcon::Moon,left,(r.bottom-px(13))/2,px(13),ink);textRect.left=left+px(18);textRect.right=r.right-px(4);
+                DrawTextW(dc,label.c_str(),-1,&textRect,DT_LEFT|DT_VCENTER|DT_SINGLELINE);
+            }else DrawTextW(dc,label.c_str(),-1,&textRect,DT_CENTER|DT_VCENTER|DT_SINGLELINE);
             return;
         }
         bool primary = item.CtlID == Start;
@@ -580,6 +603,7 @@ public:
         if(id==Minimize){ShowWindow(window,SW_MINIMIZE);return;}
         if(id==Close){SendMessageW(window,WM_CLOSE,0,0);return;}
         if(id==SaveFolder){selectFolder();return;}
+        if(id==Language||id==LanguageEnglish){changeLanguage(id==LanguageEnglish);return;}
         if (id >= ThemeSystem && id <= ThemeDark) {
             theme = id - ThemeSystem; applyTheme(); saveTheme(); return;
         }
@@ -598,7 +622,6 @@ public:
                 }
                 if(id==Background && picked>1 && !std::filesystem::exists(executableDir()+L"\\models\\rvm_mobilenetv3_fp32.onnx")) {installModel(picked-1);return;}
                 control.selected = picked - 1; updateText(id);
-                if(id==Language){changeLanguage(control.selected==1);return;}
                 if (id == SourceKind) sourceItems();
                 if (id == OutputMode) outputItems();
                 if(id==Background) backgroundItems();
@@ -640,6 +663,7 @@ public:
         RECT expected{0,0,px(1000),px(640)};AdjustWindowRectExForDpi(&expected,WS_OVERLAPPED|WS_CAPTION|WS_SYSMENU|WS_MINIMIZEBOX,FALSE,0,GetDpiForWindow(window));
         require(outer.right-outer.left==expected.right-expected.left && outer.bottom-outer.top==expected.bottom-expected.top,L"Outer window footprint changed");
         auto style=GetWindowLongPtrW(window,GWL_STYLE);require(!(style&WS_CAPTION)&&!(style&WS_MAXIMIZEBOX),L"Native caption or maximize remains");
+        if(cornersApplied){DWM_WINDOW_CORNER_PREFERENCE preference{};require(SUCCEEDED(DwmGetWindowAttribute(window,DWMWA_WINDOW_CORNER_PREFERENCE,&preference,sizeof(preference)))&&preference==DWMWCP_ROUND,L"CONNECT window rounding did not apply");}
         auto before=outer;SendMessageW(window,WM_SYSCOMMAND,SC_MAXIMIZE,0);GetWindowRect(window,&outer);require(EqualRect(&before,&outer),L"Maximize changed the fixed window");
         auto header=MAKELPARAM(outer.left+px(300),outer.top+px(24));require(SendMessageW(window,WM_NCHITTEST,0,header)==HTCAPTION,L"Custom header cannot drag");
         command(Minimize);require(IsIconic(window),L"Custom minimize failed");SingleInstance::activate(window);require(!IsIconic(window),L"Restore failed");
@@ -649,10 +673,10 @@ public:
         preferencesKey=L"Software\\ScreencastUITest-"+std::to_wstring(GetCurrentProcessId());testing=false;
         try{
             for(int id:{ThemeLight,ThemeDark,ThemeSystem}){command(id);require(theme==id-ThemeSystem,L"Theme control is inert");if(id!=ThemeSystem)require(dark==(id==ThemeDark),L"Explicit theme did not apply");}
-            controls[Language].selected=1;changeLanguage(true);require(tr(L"Начать запись")==L"Start recording",L"Language does not translate");
+            command(LanguageEnglish);require(tr(L"Начать запись")==L"Start recording",L"Language does not translate");
             saveFolder=(directory/L"recordings").wstring();savePreferences();App loaded;loaded.preferencesKey=preferencesKey;loaded.readTheme();
             require(loaded.english&&loaded.theme==0&&loaded.saveFolder==saveFolder,L"Settings do not persist");
-            controls[Language].selected=0;changeLanguage(false);require(tr(L"Настройки")==L"Настройки",L"Language cannot return to RU");
+            command(Language);require(tr(L"Настройки")==L"Настройки",L"Language cannot return to RU");
             command(Back);require(!settingsOpen && controls[SourceKind].selected==source&&live->micEnabled.load()==mic&&live->cameraEnabled.load()==camera,L"UI settings changed capture state");
             require(!(GetWindowLongPtrW(controls[ThemeDark].window,GWL_STYLE)&WS_VISIBLE),L"Theme controls remain on the main screen");
         }catch(...){RegDeleteTreeW(HKEY_CURRENT_USER,preferencesKey.c_str());testing=true;throw;}
@@ -687,6 +711,7 @@ public:
         auto old = SelectObject(mem, bitmap);
         // Use the exact production paint routines even on a hidden CI window.
         // PrintWindow returns black for hidden windows on some Windows runners.
+        if(windowHoverSnapshot)for(int id:{Minimize,Close})controls[id].hot=1.f;
         paint(mem);
         for (auto const& [id, c] : controls) {
             if(!(GetWindowLongPtrW(c.window,GWL_STYLE)&WS_VISIBLE))continue;
@@ -699,6 +724,7 @@ public:
             item.itemState = IsWindowEnabled(c.window) ? 0 : ODS_DISABLED;
             if(mouseFocusSnapshot)item.itemState|=ODS_FOCUS|ODS_NOFOCUSRECT;
             if(keyboardFocusSnapshot)item.itemState|=ODS_FOCUS;
+            if(windowHoverSnapshot&&(id==Minimize||id==Close))item.itemState|=ODS_SELECTED;
             item.rcItem = {0,0,rect.right-rect.left,rect.bottom-rect.top};
             draw(item); RestoreDC(mem, saved);
         }
@@ -729,6 +755,7 @@ LRESULT CALLBACK procedure(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam
         switch (message) {
         case WM_CREATE: app->window = hwnd;SetWindowLongPtrW(hwnd,GWLP_USERDATA,reinterpret_cast<LONG_PTR>(app));app->create(); return 0;
         case WM_NCCALCSIZE:return 0;
+        case WM_SIZE:app->layoutChrome();break;
         case WM_NCHITTEST:{auto hit=DefWindowProcW(hwnd,message,wParam,lParam);POINT p{GET_X_LPARAM(lParam),GET_Y_LPARAM(lParam)};ScreenToClient(hwnd,&p);return hit==HTCLIENT&&p.y<app->px(62)?HTCAPTION:hit;}
         case WM_SYSCOMMAND:if((wParam&0xfff0)==SC_MAXIMIZE)return 0;break;
         case WM_GETICON:return reinterpret_cast<LRESULT>(app->windowIcon(wParam,lParam));
@@ -863,6 +890,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int show) {
             state.dropdownSnapshot=args.size()>=4 && args[3]==L"dropdown";
             state.settingsSnapshot=args.size()>=4 && (args[3]==L"settings"||args[3]==L"settings-focus");
             state.keyboardFocusSnapshot=args.size()>=4 && (args[3]==L"keyboard-focus"||args[3]==L"settings-focus");
+            state.windowHoverSnapshot=args.size()>=4&&args[3]==L"window-hover";
             state.english=args.size()>=5 && args[4]==L"en";
         }
         WNDCLASSEXW cls{sizeof(cls)}; cls.lpfnWndProc = procedure; cls.hInstance = instance;

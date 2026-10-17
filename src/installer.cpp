@@ -99,8 +99,8 @@ public:
         SelectObject(dc,old);DeleteObject(bitmap);DeleteDC(dc);ReleaseDC(window,screen);
     }
     std::wstring tr(wchar_t const* ru,wchar_t const* en) const {return english?en:ru;}
-    COLORREF bg()const{return dark?RGB(11,11,12):RGB(247,247,245);}COLORREF fg()const{return dark?RGB(237,237,235):RGB(16,24,36);}
-    void notice(std::wstring const& message){UiNotice(window,font,96,bg(),fg(),dark?RGB(49,52,57):RGB(218,221,221),message,tr(L"Уведомление",L"Notice"),tr(L"Закрыть",L"Close")).show();}
+    COLORREF bg()const{return dark?RGB(12,12,13):RGB(247,247,245);}COLORREF fg()const{return dark?RGB(237,237,238):RGB(23,26,29);}
+    void notice(std::wstring const& message){UiNotice(window,font,96,bg(),fg(),dark?RGB(48,50,54):RGB(218,219,220),message,tr(L"Уведомление",L"Notice"),tr(L"Закрыть",L"Close")).show();}
     void theme() {if(background)DeleteObject(background);background=CreateSolidBrush(bg());BOOL d=dark;DwmSetWindowAttribute(window,DWMWA_USE_IMMERSIVE_DARK_MODE,&d,sizeof(d));auto border=bg();DwmSetWindowAttribute(window,DWMWA_BORDER_COLOR,&border,sizeof(border));InvalidateRect(window,nullptr,TRUE);for(auto [id,b]:buttons)InvalidateRect(b,nullptr,TRUE);if(pathEdit)InvalidateRect(pathEdit,nullptr,TRUE);}
     void add(int id,int x,int y,int w,int h) {buttons[id]=CreateWindowW(L"BUTTON",L"",WS_CHILD|WS_VISIBLE|WS_TABSTOP|BS_OWNERDRAW,x,y,w,h,window,reinterpret_cast<HMENU>(INT_PTR(id)),GetModuleHandleW(nullptr),nullptr);}
     void create() {
@@ -133,7 +133,7 @@ public:
         if(stage==0) text(dc,tr(L"Простая и удобная запись экрана\nв высоком качестве.",L"Simple, comfortable screen recording\nin high quality."),{40,242,640,316},font,DT_CENTER|DT_WORDBREAK);
         if(stage==1) {
             text(dc,tr(L"ПАПКА УСТАНОВКИ",L"INSTALLATION FOLDER"),{36,210,530,232},smallFont);
-            auto pen=CreatePen(PS_SOLID,1,dark?RGB(49,52,57):RGB(218,221,221));auto old=SelectObject(dc,pen);auto oldBrush=SelectObject(dc,background);RoundRect(dc,36,228,630,270,14,14);SelectObject(dc,oldBrush);SelectObject(dc,old);DeleteObject(pen);
+            auto pen=CreatePen(PS_SOLID,1,dark?RGB(48,50,54):RGB(218,219,220));auto old=SelectObject(dc,pen);auto oldBrush=SelectObject(dc,background);RoundRect(dc,36,228,630,270,14,14);SelectObject(dc,oldBrush);SelectObject(dc,old);DeleteObject(pen);
             text(dc,tr(L"Установка для текущего пользователя. Права администратора не нужны.",L"Installs for the current user. Administrator rights are not required."),{36,274,640,288},smallFont);
         }
         if(stage==2) {
@@ -166,8 +166,8 @@ public:
             text(dc,id==5?tr(L"Создать ярлык на рабочем столе",L"Create a desktop shortcut"):id==6?tr(L"Создать ярлык в меню «Пуск»",L"Create a Start menu shortcut"):tr(L"Запустить Screencast после установки",L"Launch Screencast after installation"),r,font);return;
         }
         std::wstring label=id==1?(english?L"EN":L"RU"):id==3?tr(L"Отмена",L"Cancel"):id==8?tr(L"Обзор…",L"Browse…"):stage==0?tr(L"Далее",L"Next"):stage==1?tr(L"Установить",L"Install"):stage==2?tr(L"Установка…",L"Installing…"):tr(L"Готово",L"Finish");
-        auto pen=CreatePen(PS_SOLID,1,dark?RGB(49,52,57):RGB(218,221,221));auto brush=CreateSolidBrush(id==4?fg():bg());auto a=SelectObject(dc,pen),b=SelectObject(dc,brush);RoundRect(dc,0,0,r.right-1,r.bottom-1,14,14);SelectObject(dc,a);SelectObject(dc,b);DeleteObject(pen);DeleteObject(brush);
-        SelectObject(dc,font);SetBkMode(dc,TRANSPARENT);SetTextColor(dc,id==4?bg():fg());DrawTextW(dc,label.c_str(),-1,&r,DT_CENTER|DT_VCENTER|DT_SINGLELINE);
+        auto pen=CreatePen(PS_SOLID,1,dark?RGB(48,50,54):RGB(218,219,220));auto brush=CreateSolidBrush(id==4?vpnPalette(dark).active:bg());auto a=SelectObject(dc,pen),b=SelectObject(dc,brush);RoundRect(dc,0,0,r.right-1,r.bottom-1,14,14);SelectObject(dc,a);SelectObject(dc,b);DeleteObject(pen);DeleteObject(brush);
+        SelectObject(dc,font);SetBkMode(dc,TRANSPARENT);SetTextColor(dc,id==4?vpnPalette(dark).buttonText:fg());DrawTextW(dc,label.c_str(),-1,&r,DT_CENTER|DT_VCENTER|DT_SINGLELINE);
     }
     void install() {
         std::wstring selected(32768,0);selected.resize(GetWindowTextW(pathEdit,selected.data(),int(selected.size())));auto destination=safeDestination(selected);path=destination.wstring();stage=2;progress=5;rebuild();
@@ -240,7 +240,7 @@ int WINAPI wWinMain(HINSTANCE instance,HINSTANCE,PWSTR,int show) {
             RegGetValueW(HKEY_CURRENT_USER,L"Software\\Screencast",L"Theme",RRF_RT_REG_DWORD,nullptr,&theme,&size);size=sizeof(DWORD);
             RegGetValueW(HKEY_CURRENT_USER,L"Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize",L"AppsUseLightTheme",RRF_RT_REG_DWORD,nullptr,&light,&size);
             bool dark=theme==2||(theme==0&&!light);
-            UiNotice confirm(nullptr,face,96,dark?RGB(11,11,12):RGB(247,247,245),dark?RGB(237,237,235):RGB(16,24,36),dark?RGB(49,52,57):RGB(218,221,221),
+            UiNotice confirm(nullptr,face,96,dark?RGB(12,12,13):RGB(247,247,245),dark?RGB(237,237,238):RGB(23,26,29),dark?RGB(48,50,54):RGB(218,219,220),
                 language?L"Uninstall Screencast?":L"Удалить Screencast?",L"Screencast",language?L"Uninstall":L"Удалить",language?L"Cancel":L"Отмена");
             bool accepted=confirm.show();DeleteObject(face);if(handle)RemoveFontMemResourceEx(handle);
             if(accepted) {

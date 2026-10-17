@@ -1,5 +1,6 @@
 #pragma once
 #include "paint.h"
+#include "ui_palette.h"
 #include <windowsx.h>
 
 // Owned modal with a live message pump: recording/status messages still reach the owner.
@@ -27,8 +28,9 @@ class UiNotice {
         if(m==WM_PAINT){PAINTSTRUCT p{};auto dc=BeginPaint(h,&p);bufferedPaint(dc,p.rcPaint,[&](HDC b){self->paint(b);});EndPaint(h,&p);return 0;}
         if(m==WM_DRAWITEM){auto& item=*reinterpret_cast<DRAWITEMSTRUCT*>(l);auto dc=item.hDC;auto r=item.rcItem;
             bool primary=item.CtlID==IDOK;
-            auto fill=CreateSolidBrush(primary?self->ink:self->bg);auto pen=CreatePen(PS_SOLID,1,self->line);auto a=SelectObject(dc,fill),b=SelectObject(dc,pen);
-            RoundRect(dc,0,0,r.right-1,r.bottom-1,self->px(16),self->px(16));SelectObject(dc,self->font);SetBkMode(dc,TRANSPARENT);SetTextColor(dc,primary?self->bg:self->ink);
+            auto palette=vpnPalette(GetRValue(self->bg)<128);
+            auto fill=CreateSolidBrush(primary?palette.active:self->bg);auto pen=CreatePen(PS_SOLID,1,self->line);auto a=SelectObject(dc,fill),b=SelectObject(dc,pen);
+            RoundRect(dc,0,0,r.right-1,r.bottom-1,self->px(16),self->px(16));SelectObject(dc,self->font);SetBkMode(dc,TRANSPARENT);SetTextColor(dc,primary?palette.buttonText:self->ink);
             auto const& label=primary?self->close:self->secondary;DrawTextW(dc,label.c_str(),-1,&r,DT_CENTER|DT_VCENTER|DT_SINGLELINE);
             SelectObject(dc,a);SelectObject(dc,b);DeleteObject(fill);DeleteObject(pen);return TRUE;}
         if(m==WM_COMMAND||m==WM_CLOSE){self->accepted=m==WM_COMMAND&&LOWORD(w)==IDOK;self->done=true;return 0;}

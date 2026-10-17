@@ -5,7 +5,7 @@ import numpy as np
 
 root = Path(sys.argv[1])
 images = []
-for name, expected in (("light", (247, 247, 245)), ("dark", (11, 11, 12))):
+for name, expected in (("light", (247, 247, 245)), ("dark", (12, 12, 13))):
     image = np.asarray(Image.open(root / f"theme-{name}.png").convert("RGB"))
     assert image.shape[0] >= 600 and image.shape[1] >= 950, 'Compact window must fit on a 1024x768 desktop'
     assert np.max(abs(image[8, 8].astype(int) - np.array(expected))) <= 1
@@ -18,9 +18,18 @@ for name, expected in (("light", (247, 247, 245)), ("dark", (11, 11, 12))):
     assert np.array_equal(image,focused), 'A focused control adds an unwanted outline'
     keyboard=np.array(Image.open(root/f'theme-{name}-keyboard-focus.png').convert('RGB'))
     assert np.array_equal(image,keyboard), 'Keyboard focus adds an unwanted highlight'
+    hovered=np.array(Image.open(root/f'theme-{name}-window-hover.png').convert('RGB'))
+    stable=np.ones(image.shape[:2],dtype=bool)
+    for x in (image.shape[1]-86,image.shape[1]-50):stable[23:39,x+6:x+22]=False
+    assert np.array_equal(image[stable],hovered[stable]), 'Minimize/close hover adds a background tile'
     settings=np.array(Image.open(root/f'theme-{name}-settings.png').convert('RGB'))
     settings_focus=np.array(Image.open(root/f'theme-{name}-settings-focus.png').convert('RGB'))
     assert np.array_equal(settings,settings_focus), 'Settings or theme buttons add a focus frame'
+    # CONNECT's language chips sit above its icon-and-label theme row.
+    assert np.std(settings[140:168,312:380])>12, 'RU/EN chips missing'
+    for left in (24,144,264):
+        tile=settings[176:208,left:left+116]
+        assert np.std(tile)>12, 'CONNECT theme picker control missing'
     gear=image[16:52,848:884].astype(int)
     bg=np.array(expected)
     for edge_area in (gear[:4],gear[-4:],gear[:,:4],gear[:,-4:]):
@@ -30,7 +39,7 @@ for name, expected in (("light", (247, 247, 245)), ("dark", (11, 11, 12))):
     # Away from the track, a smooth circular thumb has antialiased edge coverage.
     # A stroked, pixel-stepped GDI ellipse has only solid foreground/background pixels.
     thumb=image[246:259,480:493].astype(int)
-    ink=np.array((237,237,235) if name=='dark' else (16,24,36))
+    ink=np.array((237,237,238) if name=='dark' else (23,26,29))
     edge=(np.max(abs(thumb-np.array(expected)),axis=2)>5)&(np.max(abs(thumb-ink),axis=2)>5)
     edge[5:8,:]=False
     assert np.count_nonzero(edge)>=8, 'Slider thumb lacks smooth circle edges'

@@ -16,6 +16,7 @@ jobs:
       - name: Configure
         run: |
           ./scripts/import-settings-icon.ps1 -Verify
+          ./scripts/import-vpn-icons.ps1 -Verify
           cmake -S . -B build -A x64 -DBUILD_TESTING=ON
       - name: Build
         run: cmake --build build --config Release --parallel
@@ -49,7 +50,7 @@ jobs:
             $process = Start-Process build/Release/Screencast.exe -ArgumentList "--snapshot-$theme", $imagePath -WindowStyle Hidden -PassThru
             if (-not $process.WaitForExit(30000)) { $process.Kill(); throw "UI $theme timed out" }
             if ($process.ExitCode -ne 0 -or -not (Test-Path $imagePath)) { throw "UI $theme failed" }
-            foreach ($variant in @('keyboard-focus','settings','settings-focus','settings-en','en')) {
+            foreach ($variant in @('keyboard-focus','settings','settings-focus','settings-en','en','window-hover')) {
               $mode = if ($variant -eq 'settings-en') { 'settings' } elseif ($variant -eq 'en') { 'main' } else { $variant }
               $language = if ($variant -in @('settings-en','en')) { 'en' } else { 'ru' }
               $target = Join-Path $PWD "build/smoke/theme-$theme-$variant.png"

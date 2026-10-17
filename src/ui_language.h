@@ -8,7 +8,7 @@ inline std::wstring uiText(std::wstring value,bool english) {
         value=L"Monitor "+value.substr(6);auto pos=value.find(L" · основной");if(pos!=std::wstring::npos)value.replace(pos,std::wstring(L" · основной").size(),L" · primary");return value;
     }
     static std::map<std::wstring,std::wstring> const words{
-        {L"Настройки",L"Settings"},{L"Назад",L"Back"},{L"ТЕМА",L"THEME"},{L"ЯЗЫК",L"LANGUAGE"},
+        {L"Настройки",L"Settings"},{L"Назад",L"Back"},{L"ВНЕШНИЙ ВИД",L"APPEARANCE"},{L"ТЕМА",L"THEME"},{L"ЯЗЫК",L"LANGUAGE"},
         {L"ПАПКА СОХРАНЕНИЯ",L"SAVE FOLDER"},{L"Выбрать папку…",L"Choose folder…"},{L"Система",L"System"},{L"Светлая",L"Light"},{L"Тёмная",L"Dark"},
         {L"Источник",L"Source"},{L"Запись экрана",L"Screen capture"},{L"Отдельное окно",L"Window capture"},{L"Обновить",L"Refresh"},
         {L"Экран / окно",L"Monitor / window"},{L"Выходной звук",L"Output audio"},{L"Звук выключен",L"Audio off"},{L"Системный звук",L"System audio"},
