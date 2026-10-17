@@ -69,6 +69,7 @@ public:
     }
     void tick() {
         overlay.update(recorder.busy() && live->cameraEnabled?recorder.webcam():nullptr);
+        if((modelDownload||finishing)&&!settingsOpen){RECT progress{px(662),px(532),px(976),px(536)};InvalidateRect(window,&progress,FALSE);}
         if(recorder.busy()) {
             RECT preview{px(24),px(244),px(310),px(510)};if(!settingsOpen)InvalidateRect(window,&preview,FALSE);
             auto now=GetTickCount64();
@@ -474,7 +475,11 @@ public:
             MoveToEx(dc,left,y,nullptr);LineTo(dc,right,y);SelectObject(dc,before);DeleteObject(pen);
             pen=CreatePen(PS_SOLID,px(2),color);before=SelectObject(dc,pen);MoveToEx(dc,left,y,nullptr);LineTo(dc,x,y);
             auto fill=CreateSolidBrush(color);auto old=SelectObject(dc,fill);Ellipse(dc,x-px(6),y-px(6),x+px(6),y+px(6));
-            SelectObject(dc,old);SelectObject(dc,before);DeleteObject(fill);DeleteObject(pen);return;
+            SelectObject(dc,old);SelectObject(dc,before);DeleteObject(fill);DeleteObject(pen);
+            if((item.itemState&ODS_FOCUS)&&!(item.itemState&ODS_NOFOCUSRECT)){
+                auto outline=CreatePen(PS_SOLID,px(2),color);auto a=SelectObject(dc,outline),b=SelectObject(dc,GetStockObject(NULL_BRUSH));
+                RoundRect(dc,px(2),px(2),r.right-px(2),r.bottom-px(2),px(16),px(16));SelectObject(dc,a);SelectObject(dc,b);DeleteObject(outline);
+            }return;
         }
         auto label = control.label;
         bool selectedTheme = item.CtlID >= ThemeSystem && static_cast<int>(item.CtlID) - ThemeSystem == theme;
@@ -521,6 +526,7 @@ public:
         OPENFILENAMEW file{}; file.lStructSize = sizeof(file); file.hwndOwner = window;
         file.lpstrFilter = filter; file.lpstrFile = buffer; file.nMaxFile = 32768;
         file.lpstrDefExt = save ? L"mp4" : nullptr;
+        if(english){file.lpstrFilter=save?L"MP4 video\0*.mp4\0\0":L"Images\0*.png;*.jpg;*.jpeg;*.bmp\0\0";file.lpstrTitle=save?L"Save recording":L"Choose image";}
         if(save&&!saveFolder.empty())file.lpstrInitialDir=saveFolder.c_str();
         file.Flags = OFN_EXPLORER | OFN_NOCHANGEDIR | OFN_PATHMUSTEXIST | (save ? OFN_OVERWRITEPROMPT : OFN_FILEMUSTEXIST);
         bool ok = save ? GetSaveFileNameW(&file) != FALSE : GetOpenFileNameW(&file) != FALSE;

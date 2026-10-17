@@ -4,6 +4,9 @@
 // UI-only translation; device names, filenames and OS error details remain verbatim.
 inline std::wstring uiText(std::wstring value,bool english) {
     if(!english)return value;
+    if(value.starts_with(L"Экран ")){
+        value=L"Monitor "+value.substr(6);auto pos=value.find(L" · основной");if(pos!=std::wstring::npos)value.replace(pos,std::wstring(L" · основной").size(),L" · primary");return value;
+    }
     static std::map<std::wstring,std::wstring> const words{
         {L"Настройки",L"Settings"},{L"Назад",L"Back"},{L"ТЕМА",L"THEME"},{L"ЯЗЫК",L"LANGUAGE"},
         {L"ПАПКА СОХРАНЕНИЯ",L"SAVE FOLDER"},{L"Выбрать папку…",L"Choose folder…"},{L"Система",L"System"},{L"Светлая",L"Light"},{L"Тёмная",L"Dark"},
