@@ -1,5 +1,6 @@
-Screencast 0.3.1 for Windows 11 x64.
+Screencast 0.3.2 for Windows 11 x64.
 
-- Draw slider thumbs as smooth, filled 12px circles without an outline, using the existing theme foreground color.
-- Remove focus outlines from application and notice buttons, including keyboard focus. Settings and theme text actions no longer receive outlined selection or hover frames. Keyboard operation remains available.
-- Keep the existing theme palettes, Montserrat, window dimensions and recording behavior.
+- Use only the approved docs/assets/CONNECT-settings-08.svg from sanderstripa/connect, branch connect-ui-system-v1-reference. The original SVG is included unchanged; native geometry is generated from its contours and verified against its pinned SHA-256.
+- Settings is an icon-only action with no background tile, border, selection ring or focus frame. The accessible Settings label and keyboard activation remain available.
+- Includes the 0.3.1 corrections: smooth filled circular slider thumbs in the existing theme foreground color and no unwanted focus outlines on buttons or theme actions.
+- Theme palettes, Montserrat, window dimensions, product icon and recording behavior remain unchanged.

@@ -20,6 +20,7 @@
 #include "single_instance.h"
 #include "ui_language.h"
 #include "ui_notice.h"
+#include "settings_icon.h"
 
 int encoderSelfTest(std::wstring const& directory);
 int cameraSelfTest(std::wstring const& directory);
@@ -350,7 +351,7 @@ public:
     }
     void create() {
         dpi = GetDpiForWindow(window); fonts();
-        add(OpenSettings,Kind::Segment,L"Настройки",748,16,140,36);
+        add(OpenSettings,Kind::Segment,L"Настройки",848,16,36,36);
         add(Minimize,Kind::Segment,L"Свернуть",900,16,32,36);
         add(Close,Kind::Segment,L"Закрыть",944,16,32,36);
         add(Back,Kind::Button,L"Назад",24,580,160,36);
@@ -466,6 +467,11 @@ public:
         bool disabled = item.itemState & ODS_DISABLED, pressed = item.itemState & ODS_SELECTED;
         COLORREF color = disabled ? palette.muted : palette.text;
         FillRect(dc, &r, brush);
+        if(item.CtlID==OpenSettings){
+            // Exact approved SVG contours. No tile, frame, selection ring or alternate gear.
+            drawApprovedSettingsIcon(dc,(r.right-px(24))/2,(r.bottom-px(24))/2,px(24),control.hot>0?palette.text:palette.muted);
+            return;
+        }
         if(control.kind==Kind::Slider) {
             SelectObject(dc,smallFont);SetBkMode(dc,TRANSPARENT);SetTextColor(dc,color);
             auto label=tr(control.label)+L" · "+std::to_wstring(control.selected)+L"%";

@@ -14,7 +14,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Configure
-        run: cmake -S . -B build -A x64 -DBUILD_TESTING=ON
+        run: |
+          ./scripts/import-settings-icon.ps1 -Verify
+          cmake -S . -B build -A x64 -DBUILD_TESTING=ON
       - name: Build
         run: cmake --build build --config Release --parallel
       - name: Test audio timeline and suppression

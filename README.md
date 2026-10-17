@@ -99,4 +99,4 @@ Automated Windows checks cover audio mixing and suppression, decoded MP4 output,
 
 See [validation results](VALIDATION.md), [manual test scenarios](tests/MANUAL.md), and [third-party components and licensing notes](THIRD_PARTY.md). The application does not yet have a declared distribution license.
 
-The approved settings gear #8 is not included in the reference assets. Settings currently uses a text action; no substitute gear has been introduced.
+Settings uses the approved [CONNECT settings icon #8](assets/CONNECT-settings-08.svg), imported unchanged from the CONNECT UI reference branch. Its original vector contours are rendered without a background tile or focus frame.

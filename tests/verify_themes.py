@@ -21,6 +21,12 @@ for name, expected in (("light", (247, 247, 245)), ("dark", (11, 11, 12))):
     settings=np.array(Image.open(root/f'theme-{name}-settings.png').convert('RGB'))
     settings_focus=np.array(Image.open(root/f'theme-{name}-settings-focus.png').convert('RGB'))
     assert np.array_equal(settings,settings_focus), 'Settings or theme buttons add a focus frame'
+    gear=image[16:52,848:884].astype(int)
+    bg=np.array(expected)
+    for edge_area in (gear[:4],gear[-4:],gear[:,:4],gear[:,-4:]):
+        assert np.max(abs(edge_area-bg))<=1, 'Settings icon has a background tile or frame'
+    assert np.max(abs(image[34,866].astype(int)-bg))>50, 'Approved gear center dot is absent'
+    assert np.max(abs(image[34,862].astype(int)-bg))<=1, 'Approved gear inner opening is not transparent'
     # Away from the track, a smooth circular thumb has antialiased edge coverage.
     # A stroked, pixel-stepped GDI ellipse has only solid foreground/background pixels.
     thumb=image[246:259,480:493].astype(int)
