@@ -60,6 +60,7 @@ inline void drawVpnThemeIcon(HDC dc,VpnIcon icon,int x,int y,int size,COLORREF c
     for(size_t i=0;i<pixels.size()/4;++i){pixels[i*4]=GetBValue(color);pixels[i*4+1]=GetGValue(color);pixels[i*4+2]=GetRValue(color);pixels[i*4+3]=mask.alpha[i];}
     Gdiplus::Bitmap bitmap(mask.size,mask.size,mask.size*4,PixelFormat32bppARGB,pixels.data());
     Gdiplus::Graphics graphics(dc);
-    if(mask.size==size)graphics.DrawImageUnscaled(&bitmap,x,y);
-    else graphics.DrawImage(&bitmap,x,y,size,size);
+    graphics.SetInterpolationMode(Gdiplus::InterpolationModeNearestNeighbor);
+    graphics.SetPixelOffsetMode(Gdiplus::PixelOffsetModeHalf);
+    graphics.DrawImage(&bitmap,Gdiplus::Rect(x,y,size,size),0,0,mask.size,mask.size,Gdiplus::UnitPixel);
 }
