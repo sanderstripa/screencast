@@ -34,6 +34,7 @@ enum class Kind { Button, Choice, Toggle, Segment, Slider };
 struct Control {
     HWND window{}; Kind kind{}; std::wstring label;
     std::vector<std::wstring> items; int selected{}; bool checked{}; int maximum{100}; bool hover{};
+    float hot{},from{};ULONGLONG transition{};
 };
 struct Palette { COLORREF background, text, muted, line, hover, active, buttonText; };
 class App {
@@ -105,7 +106,7 @@ public:
         auto self=reinterpret_cast<App*>(GetWindowLongPtrW(GetParent(hwnd),GWLP_USERDATA));
         if(self && (message==WM_MOUSEMOVE||message==WM_MOUSELEAVE)){
             auto& c=self->controls.at(GetDlgCtrlID(hwnd));bool hot=message==WM_MOUSEMOVE;
-            if(c.hover!=hot){c.hover=hot;InvalidateRect(hwnd,nullptr,FALSE);}
+            if(c.hover!=hot){c.hover=hot;c.from=c.hot;c.transition=GetTickCount64();SetTimer(self->window,4,15,nullptr);InvalidateRect(hwnd,nullptr,FALSE);}
             if(hot){TRACKMOUSEEVENT track{sizeof(track),TME_LEAVE,hwnd,0};TrackMouseEvent(&track);}
         }
         if(message==WM_NCDESTROY)RemoveWindowSubclass(hwnd,controlProcedure,2);
@@ -133,6 +134,18 @@ public:
         live->noiseStrength=controls[NoiseStrength].selected/100.f;live->denoise=controls[Denoise].checked;
         live->background=static_cast<BackgroundMode>(controls[Background].selected);
         live->backgroundPreset=controls[BackgroundPreset].selected;live->blurStrength=std::max(1,controls[BlurStrength].selected*40/100);
+    }
+    static COLORREF blend(COLORREF a,COLORREF b,float t){
+        return RGB(int(GetRValue(a)+(GetRValue(b)-GetRValue(a))*t),int(GetGValue(a)+(GetGValue(b)-GetGValue(a))*t),int(GetBValue(a)+(GetBValue(b)-GetBValue(a))*t));
+    }
+    void hoverTick(){
+        BOOL animate=TRUE;SystemParametersInfoW(SPI_GETCLIENTAREAANIMATION,0,&animate,0);bool active{};
+        for(auto& [id,c]:controls)if(c.transition){
+            float t=animate?std::min(1.f,float(GetTickCount64()-c.transition)/135.f):1.f;
+            c.hot=c.from+((c.hover?1.f:0.f)-c.from)*t;InvalidateRect(c.window,nullptr,FALSE);
+            if(t>=1)c.transition=0;else active=true;
+        }
+        if(!active)KillTimer(window,4);
     }
     void backgroundItems() {
         int mode=controls[Background].selected;
@@ -467,7 +480,7 @@ public:
         if (control.kind == Kind::Choice) label = control.items.empty() ? L"Нет доступных устройств" : control.items[control.selected];
         label=tr(label);
         if(item.CtlID==Minimize || item.CtlID==Close){
-            if(control.hover||pressed){auto fill=CreateSolidBrush(palette.hover);FillRect(dc,&r,fill);DeleteObject(fill);}
+            if(control.hot>0||pressed){auto fill=CreateSolidBrush(blend(palette.background,palette.hover,pressed?1.f:control.hot));FillRect(dc,&r,fill);DeleteObject(fill);}
             auto pen=CreatePen(PS_SOLID,px(1),palette.muted);auto before=SelectObject(dc,pen);int x=r.right/2,y=r.bottom/2;
             if(item.CtlID==Minimize){MoveToEx(dc,x-px(5),y,nullptr);LineTo(dc,x+px(5),y);}
             else{MoveToEx(dc,x-px(4),y-px(4),nullptr);LineTo(dc,x+px(4),y+px(4));MoveToEx(dc,x+px(4),y-px(4),nullptr);LineTo(dc,x-px(4),y+px(4));}
@@ -475,9 +488,9 @@ public:
         }
         bool primary = item.CtlID == Start;
         auto pen = CreatePen(PS_SOLID, 1, palette.line);
-        auto fill = CreateSolidBrush(primary && !disabled ? palette.active : (pressed||control.hover) ? palette.hover : palette.background);
+        auto fill = CreateSolidBrush(primary && !disabled ? palette.active : blend(palette.background,palette.hover,pressed?1.f:control.hot));
         auto oldPen = SelectObject(dc, pen), oldBrush = SelectObject(dc, fill);
-        if (control.kind != Kind::Toggle && (control.kind != Kind::Segment || selectedTheme))
+        if (control.kind != Kind::Toggle && (control.kind != Kind::Segment || selectedTheme||control.hot>0||pressed))
             RoundRect(dc, r.left, r.top, r.right - 1, r.bottom - 1, px(16), px(16));
         SelectObject(dc, font); SetBkMode(dc, TRANSPARENT);
         SetTextColor(dc, primary && !disabled ? palette.buttonText : color);
@@ -490,9 +503,9 @@ public:
             int x = r.right - px(20), y = (r.top+r.bottom)/2;
             MoveToEx(dc, x-px(4), y-px(2), nullptr); LineTo(dc, x, y+px(2)); LineTo(dc, x+px(4), y-px(2));
         }
-        if(control.kind==Kind::Toggle) drawSwitch(dc,r.right-px(40),(r.bottom-r.top-px(23))/2,px(40),px(23),control.checked,dark);
+        if(control.kind==Kind::Toggle) drawSwitch(dc,r.right-px(40),(r.bottom-r.top-px(23))/2,px(40),px(23),control.checked,dark,true,!disabled);
         if((item.itemState&ODS_FOCUS)&&!(item.itemState&ODS_NOFOCUSRECT)){
-            auto focus=CreatePen(PS_SOLID,px(2),palette.text);auto previous=SelectObject(dc,focus),b=SelectObject(dc,GetStockObject(NULL_BRUSH));
+            auto focus=CreatePen(PS_SOLID,px(2),primary?palette.buttonText:palette.text);auto previous=SelectObject(dc,focus),b=SelectObject(dc,GetStockObject(NULL_BRUSH));
             RoundRect(dc,px(2),px(2),r.right-px(2),r.bottom-px(2),px(16),px(16));SelectObject(dc,previous);SelectObject(dc,b);DeleteObject(focus);
         }
         SelectObject(dc, oldBrush); SelectObject(dc, oldPen); DeleteObject(fill); DeleteObject(pen);
@@ -731,6 +744,7 @@ LRESULT CALLBACK procedure(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam
             auto r = reinterpret_cast<RECT*>(lParam); SetWindowPos(hwnd, nullptr, r->left,r->top,r->right-r->left,r->bottom-r->top,SWP_NOZORDER); app->scrollRange(); return 0;
         }
         case WM_TIMER:
+            if(wParam==4){app->hoverTick();return 0;}
             if(wParam==3) {
                 if(app->idleTestPhase==0){app->idleTestPhase=1;app->idlePaints=0;SetTimer(hwnd,3,2000,nullptr);return 0;}
                 KillTimer(hwnd,3);std::filesystem::create_directories(app->idleTestPath);
@@ -758,7 +772,7 @@ LRESULT CALLBACK procedure(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam
                 app->recorder.stop(); app->enabled(); return 0;
             }
             DestroyWindow(hwnd); return 0;
-        case WM_DESTROY: KillTimer(hwnd, 1); PostQuitMessage(0); return 0;
+        case WM_DESTROY: KillTimer(hwnd, 1);KillTimer(hwnd,4); PostQuitMessage(0); return 0;
         }
     } catch (...) {
         app->notice(errorText());

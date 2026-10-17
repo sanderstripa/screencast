@@ -1,6 +1,7 @@
 #include "common.h"
 #include "switch.h"
 #include "paint.h"
+#include "ui_notice.h"
 #include <windowsx.h>
 #include <commdlg.h>
 #include <shellapi.h>
@@ -99,6 +100,7 @@ public:
     }
     std::wstring tr(wchar_t const* ru,wchar_t const* en) const {return english?en:ru;}
     COLORREF bg()const{return dark?RGB(11,11,12):RGB(247,247,245);}COLORREF fg()const{return dark?RGB(237,237,235):RGB(16,24,36);}
+    void notice(std::wstring const& message){UiNotice(window,font,96,bg(),fg(),dark?RGB(49,52,57):RGB(218,221,221),message,tr(L"Уведомление",L"Notice"),tr(L"Закрыть",L"Close")).show();}
     void theme() {if(background)DeleteObject(background);background=CreateSolidBrush(bg());BOOL d=dark;DwmSetWindowAttribute(window,DWMWA_USE_IMMERSIVE_DARK_MODE,&d,sizeof(d));auto border=bg();DwmSetWindowAttribute(window,DWMWA_BORDER_COLOR,&border,sizeof(border));InvalidateRect(window,nullptr,TRUE);for(auto [id,b]:buttons)InvalidateRect(b,nullptr,TRUE);if(pathEdit)InvalidateRect(pathEdit,nullptr,TRUE);}
     void add(int id,int x,int y,int w,int h) {buttons[id]=CreateWindowW(L"BUTTON",L"",WS_CHILD|WS_VISIBLE|WS_TABSTOP|BS_OWNERDRAW,x,y,w,h,window,reinterpret_cast<HMENU>(INT_PTR(id)),GetModuleHandleW(nullptr),nullptr);}
     void create() {
@@ -206,10 +208,10 @@ LRESULT CALLBACK proc(HWND h,UINT m,WPARAM w,LPARAM l) {
         if(m==WM_ERASEBKGND)return 1;
         if(m==WM_CTLCOLOREDIT){SetTextColor(reinterpret_cast<HDC>(w),setup->fg());SetBkColor(reinterpret_cast<HDC>(w),setup->bg());return reinterpret_cast<LRESULT>(setup->background);}
         if(m==WM_TIMER){if(w==2){KillTimer(h,2);setup->snapshot();DestroyWindow(h);return 0;}if(setup->stage==2)InvalidateRect(h,nullptr,FALSE);return 0;}
-        if(m==Completed){if(setup->worker.joinable())setup->worker.join();if(w)setup->stage=3;else {setup->stage=1;MessageBoxW(h,setup->error.c_str(),L"Screencast",MB_OK|MB_ICONERROR);}setup->rebuild();return 0;}
+        if(m==Completed){if(setup->worker.joinable())setup->worker.join();if(w)setup->stage=3;else {setup->stage=1;setup->notice(setup->error);}setup->rebuild();return 0;}
         if(m==WM_CLOSE){if(setup->stage!=2)DestroyWindow(h);return 0;}
         if(m==WM_DESTROY){PostQuitMessage(0);return 0;}
-    }catch(...){MessageBoxW(h,errorText().c_str(),L"Screencast",MB_OK|MB_ICONERROR);}
+    }catch(...){setup->notice(errorText());}
     return DefWindowProcW(h,m,w,l);
 }
 }
