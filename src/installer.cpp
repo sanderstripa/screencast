@@ -181,7 +181,7 @@ public:
                 if(startMenu) {auto group=std::filesystem::path(folder(FOLDERID_Programs))/L"Screencast";std::filesystem::create_directories(group);shortcut((group/L"Screencast.lnk").wstring(),app,icon,L"SanderStripa.Screencast");shortcut((group/L"Uninstall.lnk").wstring(),(destination/L"Screencast-Uninstall.exe").wstring(),icon,L"SanderStripa.Screencast.Uninstall");}
                 HKEY key{};check(HRESULT_FROM_WIN32(RegCreateKeyExW(HKEY_CURRENT_USER,L"Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Screencast",0,nullptr,0,KEY_SET_VALUE,nullptr,&key,nullptr)));
                 auto put=[&](wchar_t const* name,std::wstring const& value){RegSetValueExW(key,name,0,REG_SZ,reinterpret_cast<BYTE const*>(value.c_str()),DWORD((value.size()+1)*2));};
-                put(L"DisplayName",L"Screencast");put(L"DisplayVersion",L"0.2.7");put(L"InstallLocation",path);put(L"DisplayIcon",icon);put(L"UninstallString",L"\""+(destination/L"Screencast-Uninstall.exe").wstring()+L"\" --uninstall");RegCloseKey(key);
+                put(L"DisplayName",L"Screencast");put(L"DisplayVersion",L"0.3.0");put(L"InstallLocation",path);put(L"DisplayIcon",icon);put(L"UninstallString",L"\""+(destination/L"Screencast-Uninstall.exe").wstring()+L"\" --uninstall");RegCloseKey(key);
                 progress=100;winrt::uninit_apartment();PostMessageW(window,Completed,1,0);
             }catch(...){error=errorText();PostMessageW(window,Completed,0,0);}
         });
@@ -232,7 +232,18 @@ int WINAPI wWinMain(HINSTANCE instance,HINSTANCE,PWSTR,int show) {
         wchar_t filename[32768]{};GetModuleFileNameW(nullptr,filename,32768);
         bool uninstall=(count>=2 && std::wstring(args[1])==L"--uninstall") || std::filesystem::path(filename).filename()==L"Screencast-Uninstall.exe";LocalFree(args);
         if(uninstall) {
-            if(MessageBoxW(nullptr,L"Удалить Screencast? / Uninstall Screencast?",L"Screencast",MB_YESNO|MB_ICONQUESTION)==IDYES) {
+            auto resource=FindResourceW(instance,MAKEINTRESOURCEW(202),RT_RCDATA);DWORD countFonts{};
+            auto handle=AddFontMemResourceEx(LockResource(LoadResource(instance,resource)),SizeofResource(instance,resource),nullptr,&countFonts);
+            auto face=CreateFontW(-13,0,0,0,FW_NORMAL,FALSE,FALSE,FALSE,DEFAULT_CHARSET,0,0,CLEARTYPE_QUALITY,0,L"Montserrat");
+            DWORD language{},theme{},light=1,size=sizeof(DWORD);
+            RegGetValueW(HKEY_CURRENT_USER,L"Software\\Screencast",L"English",RRF_RT_REG_DWORD,nullptr,&language,&size);size=sizeof(DWORD);
+            RegGetValueW(HKEY_CURRENT_USER,L"Software\\Screencast",L"Theme",RRF_RT_REG_DWORD,nullptr,&theme,&size);size=sizeof(DWORD);
+            RegGetValueW(HKEY_CURRENT_USER,L"Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize",L"AppsUseLightTheme",RRF_RT_REG_DWORD,nullptr,&light,&size);
+            bool dark=theme==2||(theme==0&&!light);
+            UiNotice confirm(nullptr,face,96,dark?RGB(11,11,12):RGB(247,247,245),dark?RGB(237,237,235):RGB(16,24,36),dark?RGB(49,52,57):RGB(218,221,221),
+                language?L"Uninstall Screencast?":L"Удалить Screencast?",L"Screencast",language?L"Uninstall":L"Удалить",language?L"Cancel":L"Отмена");
+            bool accepted=confirm.show();DeleteObject(face);if(handle)RemoveFontMemResourceEx(handle);
+            if(accepted) {
                 uninstallFiles(executableDir());RegDeleteTreeW(HKEY_CURRENT_USER,L"Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Screencast");
                 std::error_code error;std::filesystem::remove(folder(FOLDERID_Desktop)+L"\\Screencast.lnk",error);auto group=std::filesystem::path(folder(FOLDERID_Programs))/L"Screencast";
                 std::filesystem::remove(group/L"Screencast.lnk",error);std::filesystem::remove(group/L"Uninstall.lnk",error);std::filesystem::remove(group,error);

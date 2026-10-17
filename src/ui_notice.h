@@ -37,14 +37,14 @@ public:
         :owner(parent),font(face),dpi(scale),bg(background),ink(text),line(border),message(std::move(body)),caption(std::move(title)),close(std::move(action)),secondary(std::move(cancel)){}
     bool show(void (*opened)(HWND)=nullptr){
         WNDCLASSW cls{};cls.lpfnWndProc=procedure;cls.hInstance=GetModuleHandleW(nullptr);cls.lpszClassName=L"ScreencastNotice";cls.hCursor=LoadCursorW(nullptr,IDC_ARROW);RegisterClassW(&cls);
-        RECT r{};GetWindowRect(owner,&r);window=CreateWindowExW(WS_EX_DLGMODALFRAME,cls.lpszClassName,caption.c_str(),WS_POPUP|WS_BORDER|WS_SYSMENU|WS_CLIPCHILDREN,
+        RECT r{};if(owner)GetWindowRect(owner,&r);else SystemParametersInfoW(SPI_GETWORKAREA,0,&r,0);window=CreateWindowExW(WS_EX_DLGMODALFRAME,cls.lpszClassName,caption.c_str(),WS_POPUP|WS_BORDER|WS_SYSMENU|WS_CLIPCHILDREN,
             r.left+(r.right-r.left-px(520))/2,r.top+(r.bottom-r.top-px(316))/2,px(520),px(316),owner,nullptr,cls.hInstance,this);
         if(!window)return false;
         button=CreateWindowW(L"BUTTON",close.c_str(),WS_CHILD|WS_VISIBLE|WS_TABSTOP|BS_OWNERDRAW,px(360),px(264),px(136),px(36),window,reinterpret_cast<HMENU>(IDOK),cls.hInstance,nullptr);
         if(!secondary.empty())CreateWindowW(L"BUTTON",secondary.c_str(),WS_CHILD|WS_VISIBLE|WS_TABSTOP|BS_OWNERDRAW,px(212),px(264),px(136),px(36),window,reinterpret_cast<HMENU>(IDCANCEL),cls.hInstance,nullptr);
         EnableWindow(owner,FALSE);ShowWindow(window,SW_SHOW);SetFocus(button);
         if(opened)opened(window);
-        MSG msg{};bool quit{};while(!done&&IsWindow(owner)&&IsWindow(window)){
+        MSG msg{};bool quit{};while(!done&&(!owner||IsWindow(owner))&&IsWindow(window)){
             auto result=GetMessageW(&msg,nullptr,0,0);if(result<=0){quit=result==0;break;}
             if(msg.message==WM_KEYDOWN&&msg.wParam==VK_ESCAPE){done=true;continue;}
             if(!IsDialogMessageW(window,&msg)){TranslateMessage(&msg);DispatchMessageW(&msg);}

@@ -25,10 +25,10 @@ Built with **C++20 and Win32**, using Windows capture, audio and encoding APIs. 
 - **Adjustable software noise suppression.** Enable it for the microphone and set its intensity from 0 to 100%.
 - **Camera background effects.** Blur the real background or choose a solid color, gradient, neutral interior, or your own image. Effects run locally using an optional foreground model.
 - **MP4 output.** H.264 video with optional AAC audio. Hardware encoding is preferred when available, with a software fallback.
-- **Light, dark and system themes.** A compact interface with Montserrat typography and no vertical scrolling.
+- **Light, dark and system themes.** A custom window header, compact CONNECT UI controls, Montserrat typography, and no vertical scrolling. The original Screencast light and dark palettes are preserved.
 - **One application instance.** Launching Screencast again restores the existing window.
 
-The application interface is currently in **Russian**. The installer supports **Russian and English**, with light and dark themes.
+The application and installer support **Russian and English**. Open **Settings** to choose the application language, System/Light/Dark theme, and default recording folder. Recording controls remain on the main screen.
 
 ## Download and install
 
@@ -91,10 +91,12 @@ The build script compiles the application, runs the core tests, and packages the
 - Selected devices remain fixed during a recording. Default-device changes are not picked up automatically; start a new recording to change devices. Source closure, audio-process exit, and device or disk failures end recording with a message.
 - Software noise suppression works best on steady fan noise and hiss. Keyboard impacts and background voices may remain. Hardware microphone processing is configured through Windows or the device manufacturer's tools.
 - Built-in background effects can be changed during recording; a custom image must be chosen beforehand.
-- The theme is saved between sessions. Other settings are not yet persisted. Hotkeys and detailed encoding controls are not yet available.
+- Theme, language, and the recording folder are saved between sessions. Other recording settings are not yet persisted. Hotkeys and detailed encoding controls are not yet available.
 
 ## Validation and project notes
 
 Automated Windows checks cover audio mixing and suppression, decoded MP4 output, webcam composition and live toggles, foreground matting, themes and dropdowns, installer behavior, icon extraction, and repeated launches. Synthetic checks do not replace testing with physical devices.
 
 See [validation results](VALIDATION.md), [manual test scenarios](tests/MANUAL.md), and [third-party components and licensing notes](THIRD_PARTY.md). The application does not yet have a declared distribution license.
+
+The approved settings gear #8 is not included in the reference assets. Settings currently uses a text action; no substitute gear has been introduced.
