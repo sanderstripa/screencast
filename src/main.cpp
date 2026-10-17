@@ -482,7 +482,7 @@ public:
             return;
         }
         auto label = control.label;
-        
+
         if (control.kind == Kind::Choice) label = control.items.empty() ? L"Нет доступных устройств" : control.items[control.selected];
         label=tr(label);
         if(item.CtlID==Minimize || item.CtlID==Close){
@@ -692,7 +692,7 @@ public:
             item.CtlID = id; item.hwndItem = c.window; item.hDC = mem; item.itemAction = ODA_DRAWENTIRE;
             item.itemState = IsWindowEnabled(c.window) ? 0 : ODS_DISABLED;
             if(mouseFocusSnapshot)item.itemState|=ODS_FOCUS|ODS_NOFOCUSRECT;
-            if(keyboardFocusSnapshot&&id==Start)item.itemState|=ODS_FOCUS;
+            if(keyboardFocusSnapshot)item.itemState|=ODS_FOCUS;
             item.rcItem = {0,0,rect.right-rect.left,rect.bottom-rect.top};
             draw(item); RestoreDC(mem, saved);
         }
@@ -855,8 +855,8 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int show) {
             state.theme = args[1] == L"--snapshot-dark" ? 2 : 1; state.snapshotPath = args[2];
             state.mouseFocusSnapshot=args.size()>=4 && args[3]==L"mouse-focus";
             state.dropdownSnapshot=args.size()>=4 && args[3]==L"dropdown";
-            state.settingsSnapshot=args.size()>=4 && args[3]==L"settings";
-            state.keyboardFocusSnapshot=args.size()>=4 && args[3]==L"keyboard-focus";
+            state.settingsSnapshot=args.size()>=4 && (args[3]==L"settings"||args[3]==L"settings-focus");
+            state.keyboardFocusSnapshot=args.size()>=4 && (args[3]==L"keyboard-focus"||args[3]==L"settings-focus");
             state.english=args.size()>=5 && args[4]==L"en";
         }
         WNDCLASSEXW cls{sizeof(cls)}; cls.lpfnWndProc = procedure; cls.hInstance = instance;

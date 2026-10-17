@@ -19,6 +19,15 @@ for name, expected in (("light", (247, 247, 245)), ("dark", (11, 11, 12))):
     keyboard=np.array(Image.open(root/f'theme-{name}-keyboard-focus.png').convert('RGB'))
     assert np.array_equal(image,keyboard), 'Keyboard focus adds an unwanted highlight'
     settings=np.array(Image.open(root/f'theme-{name}-settings.png').convert('RGB'))
+    settings_focus=np.array(Image.open(root/f'theme-{name}-settings-focus.png').convert('RGB'))
+    assert np.array_equal(settings,settings_focus), 'Settings or theme buttons add a focus frame'
+    # Away from the track, a smooth circular thumb has antialiased edge coverage.
+    # A stroked, pixel-stepped GDI ellipse has only solid foreground/background pixels.
+    thumb=image[246:259,480:493].astype(int)
+    ink=np.array((237,237,235) if name=='dark' else (16,24,36))
+    edge=(np.max(abs(thumb-np.array(expected)),axis=2)>5)&(np.max(abs(thumb-ink),axis=2)>5)
+    edge[5:8,:]=False
+    assert np.count_nonzero(edge)>=8, 'Slider thumb lacks smooth circle edges'
     settings_en=np.array(Image.open(root/f'theme-{name}-settings-en.png').convert('RGB'))
     main_en=np.array(Image.open(root/f'theme-{name}-en.png').convert('RGB'))
     assert settings.shape==image.shape==main_en.shape, 'Settings resized the application'
