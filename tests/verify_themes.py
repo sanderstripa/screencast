@@ -17,7 +17,7 @@ for name, expected in (("light", (247, 247, 245)), ("dark", (11, 11, 12))):
     focused=np.array(Image.open(root/f'theme-{name}-mouse-focus.png').convert('RGB'))
     assert np.array_equal(image,focused), 'A focused control adds an unwanted outline'
     keyboard=np.array(Image.open(root/f'theme-{name}-keyboard-focus.png').convert('RGB'))
-    assert not np.array_equal(image[580:616,726:976],keyboard[580:616,726:976]), 'Keyboard focus is not visible'
+    assert np.array_equal(image,keyboard), 'Keyboard focus adds an unwanted highlight'
     settings=np.array(Image.open(root/f'theme-{name}-settings.png').convert('RGB'))
     settings_en=np.array(Image.open(root/f'theme-{name}-settings-en.png').convert('RGB'))
     main_en=np.array(Image.open(root/f'theme-{name}-en.png').convert('RGB'))

@@ -30,10 +30,7 @@ class UiNotice {
             auto fill=CreateSolidBrush(primary?self->ink:self->bg);auto pen=CreatePen(PS_SOLID,1,self->line);auto a=SelectObject(dc,fill),b=SelectObject(dc,pen);
             RoundRect(dc,0,0,r.right-1,r.bottom-1,self->px(16),self->px(16));SelectObject(dc,self->font);SetBkMode(dc,TRANSPARENT);SetTextColor(dc,primary?self->bg:self->ink);
             auto const& label=primary?self->close:self->secondary;DrawTextW(dc,label.c_str(),-1,&r,DT_CENTER|DT_VCENTER|DT_SINGLELINE);
-            if((item.itemState&ODS_FOCUS)&&!(item.itemState&ODS_NOFOCUSRECT)){
-                auto focus=CreatePen(PS_SOLID,self->px(2),primary?self->bg:self->ink);auto old=SelectObject(dc,focus),brush=SelectObject(dc,GetStockObject(NULL_BRUSH));
-                RoundRect(dc,self->px(3),self->px(3),r.right-self->px(3),r.bottom-self->px(3),self->px(12),self->px(12));SelectObject(dc,old);SelectObject(dc,brush);DeleteObject(focus);
-            }SelectObject(dc,a);SelectObject(dc,b);DeleteObject(fill);DeleteObject(pen);return TRUE;}
+            SelectObject(dc,a);SelectObject(dc,b);DeleteObject(fill);DeleteObject(pen);return TRUE;}
         if(m==WM_COMMAND||m==WM_CLOSE){self->accepted=m==WM_COMMAND&&LOWORD(w)==IDOK;self->done=true;return 0;}
         if(m==WM_NCHITTEST){auto hit=DefWindowProcW(h,m,w,l);POINT p{GET_X_LPARAM(l),GET_Y_LPARAM(l)};ScreenToClient(h,&p);return hit==HTCLIENT&&p.y<self->px(56)?HTCAPTION:hit;}
         return DefWindowProcW(h,m,w,l);

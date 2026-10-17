@@ -474,15 +474,15 @@ public:
             auto pen=CreatePen(PS_SOLID,px(2),palette.line);auto before=SelectObject(dc,pen);
             MoveToEx(dc,left,y,nullptr);LineTo(dc,right,y);SelectObject(dc,before);DeleteObject(pen);
             pen=CreatePen(PS_SOLID,px(2),color);before=SelectObject(dc,pen);MoveToEx(dc,left,y,nullptr);LineTo(dc,x,y);
-            auto fill=CreateSolidBrush(color);auto old=SelectObject(dc,fill);Ellipse(dc,x-px(6),y-px(6),x+px(6),y+px(6));
-            SelectObject(dc,old);SelectObject(dc,before);DeleteObject(fill);DeleteObject(pen);
-            if((item.itemState&ODS_FOCUS)&&!(item.itemState&ODS_NOFOCUSRECT)){
-                auto outline=CreatePen(PS_SOLID,px(2),color);auto a=SelectObject(dc,outline),b=SelectObject(dc,GetStockObject(NULL_BRUSH));
-                RoundRect(dc,px(2),px(2),r.right-px(2),r.bottom-px(2),px(16),px(16));SelectObject(dc,a);SelectObject(dc,b);DeleteObject(outline);
-            }return;
+            SelectObject(dc,before);DeleteObject(pen);
+            // Fill only: a GDI stroke on a tiny ellipse produces jagged protrusions.
+            Gdiplus::Graphics graphics(dc);graphics.SetSmoothingMode(Gdiplus::SmoothingModeAntiAlias);
+            Gdiplus::SolidBrush thumb(Gdiplus::Color(255,GetRValue(palette.text),GetGValue(palette.text),GetBValue(palette.text)));
+            graphics.FillEllipse(&thumb,float(x-px(6)),float(y-px(6)),float(px(12)),float(px(12)));
+            return;
         }
         auto label = control.label;
-        bool selectedTheme = item.CtlID >= ThemeSystem && static_cast<int>(item.CtlID) - ThemeSystem == theme;
+        
         if (control.kind == Kind::Choice) label = control.items.empty() ? L"Нет доступных устройств" : control.items[control.selected];
         label=tr(label);
         if(item.CtlID==Minimize || item.CtlID==Close){
@@ -491,16 +491,14 @@ public:
             if(item.CtlID==Minimize){MoveToEx(dc,x-px(5),y,nullptr);LineTo(dc,x+px(5),y);}
             else{MoveToEx(dc,x-px(4),y-px(4),nullptr);LineTo(dc,x+px(4),y+px(4));MoveToEx(dc,x+px(4),y-px(4),nullptr);LineTo(dc,x-px(4),y+px(4));}
             SelectObject(dc,before);DeleteObject(pen);
-            if((item.itemState&ODS_FOCUS)&&!(item.itemState&ODS_NOFOCUSRECT)){
-                auto outline=CreatePen(PS_SOLID,px(2),palette.text);auto a=SelectObject(dc,outline),b=SelectObject(dc,GetStockObject(NULL_BRUSH));
-                RoundRect(dc,px(2),px(2),r.right-px(2),r.bottom-px(2),px(8),px(8));SelectObject(dc,a);SelectObject(dc,b);DeleteObject(outline);
-            }return;
+            return;
         }
         bool primary = item.CtlID == Start;
         auto pen = CreatePen(PS_SOLID, 1, palette.line);
         auto fill = CreateSolidBrush(primary && !disabled ? palette.active : blend(palette.background,palette.hover,pressed?1.f:control.hot));
         auto oldPen = SelectObject(dc, pen), oldBrush = SelectObject(dc, fill);
-        if (control.kind != Kind::Toggle && (control.kind != Kind::Segment || selectedTheme||control.hot>0||pressed))
+        if(control.kind==Kind::Segment)SelectObject(dc,GetStockObject(NULL_PEN));
+        if (control.kind != Kind::Toggle && (control.kind != Kind::Segment || control.hot>0||pressed))
             RoundRect(dc, r.left, r.top, r.right - 1, r.bottom - 1, px(16), px(16));
         SelectObject(dc, font); SetBkMode(dc, TRANSPARENT);
         SetTextColor(dc, primary && !disabled ? palette.buttonText : color);
@@ -515,10 +513,7 @@ public:
             MoveToEx(dc, x-px(4), y-px(2), nullptr); LineTo(dc, x, y+px(2)); LineTo(dc, x+px(4), y-px(2));
         }
         if(control.kind==Kind::Toggle) drawSwitch(dc,r.right-px(40),(r.bottom-r.top-px(23))/2,px(40),px(23),control.checked,dark,true,!disabled);
-        if((item.itemState&ODS_FOCUS)&&!(item.itemState&ODS_NOFOCUSRECT)){
-            auto focus=CreatePen(PS_SOLID,px(2),primary?palette.buttonText:palette.text);auto previous=SelectObject(dc,focus),b=SelectObject(dc,GetStockObject(NULL_BRUSH));
-            RoundRect(dc,px(2),px(2),r.right-px(2),r.bottom-px(2),px(16),px(16));SelectObject(dc,previous);SelectObject(dc,b);DeleteObject(focus);
-        }
+
         SelectObject(dc, oldBrush); SelectObject(dc, oldPen); DeleteObject(fill); DeleteObject(pen);
     }
     std::wstring choose(bool save, wchar_t const* filter) {
