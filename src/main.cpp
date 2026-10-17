@@ -45,6 +45,7 @@ public:
     bool english{},settingsOpen{},settingsSnapshot{},keyboardFocusSnapshot{},testing{};
     std::wstring saveFolder;
     std::wstring preferencesKey{L"Software\\Screencast"};
+    unsigned noticePumps{};
     std::wstring tr(std::wstring const& s)const{return uiText(s,english);}
     void notice(std::wstring const& message){UiNotice(window,font,dpi,palette.background,palette.text,palette.line,tr(message),tr(L"Уведомление"),tr(L"Закрыть")).show();}
     HFONT font{}, smallFont{}, heading{}, title{};
@@ -644,7 +645,19 @@ public:
             require(!(GetWindowLongPtrW(controls[ThemeDark].window,GWL_STYLE)&WS_VISIBLE),L"Theme controls remain on the main screen");
         }catch(...){RegDeleteTreeW(HKEY_CURRENT_USER,preferencesKey.c_str());testing=true;throw;}
         RegDeleteTreeW(HKEY_CURRENT_USER,preferencesKey.c_str());testing=true;
-        std::ofstream report(directory/L"ui-system.txt");report<<"PASS: fixed outer size, custom header/drag/minimize/restore, maximize blocked; settings visibility; RU/EN and all theme modes; isolated registry persistence for language/theme/save folder; unchanged capture selections and live settings.\n";
+        UiNotice note(window,font,dpi,palette.background,palette.text,palette.line,L"Background effects run locally.",L"Notice",L"Close");
+        require(note.show([](HWND h){PostMessageW(GetWindow(h,GW_OWNER),WM_APP+105,0,0);PostMessageW(h,WM_COMMAND,IDOK,0);}),L"Notice confirmation failed");
+        require(noticePumps==1&&IsWindowEnabled(window),L"Notice blocked owner messages or left it disabled");
+        UiNotice confirm(window,font,dpi,palette.background,palette.text,palette.line,L"Confirm?",L"Notice",L"Continue",L"Cancel");
+        require(!confirm.show([](HWND h){PostMessageW(h,WM_KEYDOWN,VK_ESCAPE,0);})&&IsWindowEnabled(window),L"Notice Escape cancellation failed");
+        for(int scale:{144,192,96}){
+            RECT r{};GetWindowRect(window,&r);r.right=r.left+MulDiv(r.right-r.left,scale,dpi);r.bottom=r.top+MulDiv(r.bottom-r.top,scale,dpi);
+            SendMessageW(window,WM_DPICHANGED,MAKELONG(scale,scale),reinterpret_cast<LPARAM>(&r));
+            RECT area{};GetClientRect(window,&area);for(auto const& [id,c]:controls){RECT child{};GetWindowRect(c.window,&child);MapWindowPoints(nullptr,window,reinterpret_cast<POINT*>(&child),2);
+                require(child.left>=0&&child.top>=0&&child.right<=area.right&&child.bottom<=area.bottom,L"DPI scaling clips a control");}
+            LOGFONTW face{};GetObjectW(font,sizeof(face),&face);require(std::wstring(face.lfFaceName)==L"Montserrat",L"Font changed during DPI handling");
+        }
+        std::ofstream report(directory/L"ui-system.txt");report<<"PASS: fixed outer size, custom header/drag/minimize/restore, maximize blocked; settings visibility; RU/EN and all theme modes; isolated registry persistence for language/theme/save folder; unchanged capture selections and live settings; production DPI handler at 96/144/192 with no clipped controls and Montserrat retained; modal owner-message delivery, confirmation, Escape and owner re-enable.\n";
     }
     void snapshot() {
         for(int scale:{96,144,192}) for(int kind:{ICON_SMALL,ICON_SMALL2,ICON_BIG}) {
@@ -700,6 +713,7 @@ App* app{};
 LRESULT CALLBACK procedure(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam) {
     try {
         if(message==SingleInstance::activationMessage()){SingleInstance::activate(hwnd);return 1;}
+        if(message==WM_APP+105&&app->testing){++app->noticePumps;return 0;}
         switch (message) {
         case WM_CREATE: app->window = hwnd;SetWindowLongPtrW(hwnd,GWLP_USERDATA,reinterpret_cast<LONG_PTR>(app));app->create(); return 0;
         case WM_NCCALCSIZE:return 0;
