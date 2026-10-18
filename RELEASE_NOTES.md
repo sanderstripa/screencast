@@ -1,6 +1,6 @@
-Screencast 0.3.4 for Windows 11 x64.
+Screencast 0.3.5 for Windows 11 x64.
 
-- Correct System, Light and Dark theme icons to use Chromium-rendered pixels from CONNECT VPN's unchanged Monitor, Sun and Moon SVGs, at its original 13px size and stroke weight.
-- Include exact physical-size masks for 100% through 400% DPI; do not reconstruct these icons using native GDI+ paths.
-- Compare the actual icon pixels in both theme screenshots against browser-rendered reference images.
-- Keep all other interface styling, window controls, Montserrat, colors, layout and recording behavior unchanged.
+- Remember the last normal window position for the current Windows user and restore it before showing the app on the next launch.
+- Save after moving, on close, and when Windows requests shutdown; minimized coordinates never replace the saved position.
+- Keep the window reachable if a monitor is disconnected or its work area changes. Preserve negative coordinates on secondary monitors and retain the existing window size.
+- Keep the interface, theme icons, colors, fonts, recording behavior and single-instance handling unchanged.

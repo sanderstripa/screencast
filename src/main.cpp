@@ -23,6 +23,7 @@
 #include "settings_icon.h"
 #include "ui_palette.h"
 #include "vpn_icons.h"
+#include "window_position.h"
 
 int encoderSelfTest(std::wstring const& directory);
 int cameraSelfTest(std::wstring const& directory);
@@ -46,6 +47,8 @@ public:
     bool dark{}, closing{}, finishing{};
     bool english{},settingsOpen{},settingsSnapshot{},keyboardFocusSnapshot{},testing{};
     bool windowHoverSnapshot{},cornersApplied{};
+    bool positionReady{};
+    void saveWindowPosition(){if(positionReady&&!testing)windowPosition::save(window,preferencesKey.c_str());}
     std::wstring saveFolder;
     std::wstring preferencesKey{L"Software\\Screencast"};
     unsigned noticePumps{};
@@ -672,6 +675,34 @@ public:
         auto source=controls[SourceKind].selected;auto mic=live->micEnabled.load();auto camera=live->cameraEnabled.load();
         preferencesKey=L"Software\\ScreencastUITest-"+std::to_wstring(GetCurrentProcessId());testing=false;
         try{
+            require(!windowPosition::restore(window,preferencesKey.c_str()),L"Missing window position must preserve first-launch placement");
+            MONITORINFO monitor{sizeof(monitor)};require(GetMonitorInfoW(MonitorFromWindow(window,MONITOR_DEFAULTTONEAREST),&monitor)!=FALSE,L"Position test monitor unavailable");
+            RECT current{};GetWindowRect(window,&current);SIZE size{current.right-current.left,current.bottom-current.top};
+            auto target=windowPosition::fit(POINT{monitor.rcWork.left+20,monitor.rcWork.top+20},size,monitor.rcWork);
+            SetWindowPos(window,nullptr,target.x,target.y,0,0,SWP_NOSIZE|SWP_NOZORDER|SWP_NOACTIVATE);
+            SendMessageW(window,WM_EXITSIZEMOVE,0,0);
+            SetWindowPos(window,nullptr,target.x+10,target.y+10,0,0,SWP_NOSIZE|SWP_NOZORDER|SWP_NOACTIVATE);
+            require(windowPosition::restore(window,preferencesKey.c_str()),L"Saved window position did not restore");
+            GetWindowRect(window,&current);require(current.left==target.x&&current.top==target.y,L"Window reopened at the wrong position");
+            command(Minimize);require(!windowPosition::save(window,preferencesKey.c_str()),L"Minimized coordinates overwrote window position");
+            SingleInstance::activate(window);require(windowPosition::restore(window,preferencesKey.c_str()),L"Minimized close lost window position");
+            GetWindowRect(window,&current);require(current.left==target.x&&current.top==target.y,L"Minimized position changed saved placement");
+            SetWindowPos(window,nullptr,target.x+4,target.y+4,0,0,SWP_NOSIZE|SWP_NOZORDER|SWP_NOACTIVATE);
+            require(SendMessageW(window,WM_QUERYENDSESSION,0,0)==TRUE,L"Shutdown position save blocked Windows");
+            SetWindowPos(window,nullptr,target.x,target.y,0,0,SWP_NOSIZE|SWP_NOZORDER|SWP_NOACTIVATE);
+            require(windowPosition::restore(window,preferencesKey.c_str()),L"Shutdown position did not persist");
+            GetWindowRect(window,&current);require(current.left==target.x+4&&current.top==target.y+4,L"Shutdown saved the wrong position");
+            HKEY positionKey{};require(RegOpenKeyExW(HKEY_CURRENT_USER,preferencesKey.c_str(),0,KEY_SET_VALUE,&positionKey)==ERROR_SUCCESS,L"Position test registry unavailable");
+            POINT missingMonitor{MAXLONG,MINLONG};RegSetValueExW(positionKey,L"WindowPosition",0,REG_BINARY,reinterpret_cast<BYTE const*>(&missingMonitor),sizeof(missingMonitor));RegCloseKey(positionKey);
+            require(windowPosition::restore(window,preferencesKey.c_str()),L"Disconnected monitor fallback failed");
+            GetWindowRect(window,&current);monitor={sizeof(monitor)};GetMonitorInfoW(MonitorFromWindow(window,MONITOR_DEFAULTTONEAREST),&monitor);
+            require(current.left>=monitor.rcWork.left&&current.top>=monitor.rcWork.top&&current.right<=std::max(monitor.rcWork.right,monitor.rcWork.left+size.cx)&&current.bottom<=std::max(monitor.rcWork.bottom,monitor.rcWork.top+size.cy),L"Restored window is outside the work area");
+            auto negative=windowPosition::fit(POINT{-1700,100},SIZE{1000,640},RECT{-1920,0,0,1080});require(negative.x==-1700&&negative.y==100,L"Negative secondary-monitor coordinates were discarded");
+            auto small=windowPosition::fit(POINT{900,700},SIZE{1000,640},RECT{0,0,800,600});require(small.x==0&&small.y==0,L"Small display must keep the titlebar reachable without resizing");
+            require(RegOpenKeyExW(HKEY_CURRENT_USER,preferencesKey.c_str(),0,KEY_SET_VALUE,&positionKey)==ERROR_SUCCESS,L"Position test registry unavailable");
+            DWORD invalid=7;RegSetValueExW(positionKey,L"WindowPosition",0,REG_BINARY,reinterpret_cast<BYTE const*>(&invalid),sizeof(invalid));RegCloseKey(positionKey);
+            require(!windowPosition::restore(window,preferencesKey.c_str()),L"Malformed saved position was accepted");
+            KillTimer(window,5);
             for(int id:{ThemeLight,ThemeDark,ThemeSystem}){command(id);require(theme==id-ThemeSystem,L"Theme control is inert");if(id!=ThemeSystem)require(dark==(id==ThemeDark),L"Explicit theme did not apply");}
             command(LanguageEnglish);require(tr(L"Начать запись")==L"Start recording",L"Language does not translate");
             saveFolder=(directory/L"recordings").wstring();savePreferences();App loaded;loaded.preferencesKey=preferencesKey;loaded.readTheme();
@@ -693,7 +724,7 @@ public:
                 require(child.left>=0&&child.top>=0&&child.right<=area.right&&child.bottom<=area.bottom,L"DPI scaling clips a control");}
             LOGFONTW face{};GetObjectW(font,sizeof(face),&face);require(std::wstring(face.lfFaceName)==L"Montserrat",L"Font changed during DPI handling");
         }
-        std::ofstream report(directory/L"ui-system.txt");report<<"PASS: fixed outer size, custom header/drag/minimize/restore, maximize blocked; settings visibility; RU/EN and all theme modes; isolated registry persistence for language/theme/save folder; unchanged capture selections and live settings; production DPI handler at 96/144/192 with no clipped controls and Montserrat retained; modal owner-message delivery, confirmation, Escape and owner re-enable.\n";
+        std::ofstream report(directory/L"ui-system.txt");report<<"PASS: window position persists after moving and shutdown, minimized coordinates ignored, missing/corrupt position safe, disconnected/negative/small monitor placement handled; fixed outer size, custom header/drag/minimize/restore, maximize blocked; settings visibility; RU/EN and all theme modes; isolated registry persistence for language/theme/save folder; unchanged capture selections and live settings; production DPI handler at 96/144/192 with no clipped controls and Montserrat retained; modal owner-message delivery, confirmation, Escape and owner re-enable.\n";
     }
     void snapshot() {
         for(int scale:{96,144,192}) for(int kind:{ICON_SMALL,ICON_SMALL2,ICON_BIG}) {
@@ -756,6 +787,12 @@ LRESULT CALLBACK procedure(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam
         case WM_CREATE: app->window = hwnd;SetWindowLongPtrW(hwnd,GWLP_USERDATA,reinterpret_cast<LONG_PTR>(app));app->create(); return 0;
         case WM_NCCALCSIZE:return 0;
         case WM_SIZE:app->layoutChrome();break;
+        case WM_MOVE:
+            if(app->positionReady&&!app->testing&&!IsIconic(hwnd))SetTimer(hwnd,5,400,nullptr);
+            break;
+        case WM_EXITSIZEMOVE:KillTimer(hwnd,5);app->saveWindowPosition();break;
+        case WM_QUERYENDSESSION:app->saveWindowPosition();return TRUE;
+        case WM_ENDSESSION:if(wParam)app->saveWindowPosition();break;
         case WM_NCHITTEST:{auto hit=DefWindowProcW(hwnd,message,wParam,lParam);POINT p{GET_X_LPARAM(lParam),GET_Y_LPARAM(lParam)};ScreenToClient(hwnd,&p);return hit==HTCLIENT&&p.y<app->px(62)?HTCAPTION:hit;}
         case WM_SYSCOMMAND:if((wParam&0xfff0)==SC_MAXIMIZE)return 0;break;
         case WM_GETICON:return reinterpret_cast<LRESULT>(app->windowIcon(wParam,lParam));
@@ -797,6 +834,7 @@ LRESULT CALLBACK procedure(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam
             auto r = reinterpret_cast<RECT*>(lParam); SetWindowPos(hwnd, nullptr, r->left,r->top,r->right-r->left,r->bottom-r->top,SWP_NOZORDER); app->scrollRange(); return 0;
         }
         case WM_TIMER:
+            if(wParam==5){KillTimer(hwnd,5);app->saveWindowPosition();return 0;}
             if(wParam==4){app->hoverTick();return 0;}
             if(wParam==3) {
                 if(app->idleTestPhase==0){app->idleTestPhase=1;app->idlePaints=0;SetTimer(hwnd,3,2000,nullptr);return 0;}
@@ -820,12 +858,13 @@ LRESULT CALLBACK procedure(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam
             return 0;
         }
         case WM_CLOSE:
+            app->saveWindowPosition();
             if (app->recorder.busy() || app->finishing) {
                 app->closing = true; app->finishing = true; app->status = L"Завершаю запись перед выходом…";
                 app->recorder.stop(); app->enabled(); return 0;
             }
             DestroyWindow(hwnd); return 0;
-        case WM_DESTROY: KillTimer(hwnd, 1);KillTimer(hwnd,4); PostQuitMessage(0); return 0;
+        case WM_DESTROY: KillTimer(hwnd, 1);KillTimer(hwnd,4);KillTimer(hwnd,5); PostQuitMessage(0); return 0;
         }
     } catch (...) {
         app->notice(errorText());
@@ -899,6 +938,8 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int show) {
         auto hwnd = CreateWindowExW(0, cls.lpszClassName, L"Screencast",
             WS_POPUP | WS_SYSMENU | WS_MINIMIZEBOX | WS_CLIPCHILDREN, CW_USEDEFAULT, CW_USEDEFAULT, 1040, 700, nullptr, nullptr, instance, nullptr);
         if (!hwnd) check(HRESULT_FROM_WIN32(GetLastError()));
+        if(!diagnosticMode)windowPosition::restore(hwnd,state.preferencesKey.c_str());
+        state.positionReady=true;
         if(state.settingsSnapshot){state.settingsOpen=true;state.showPage();}
         SendMessageW(hwnd,WM_SETICON,ICON_BIG,reinterpret_cast<LPARAM>(state.windowIcon(ICON_BIG,0)));
         SendMessageW(hwnd,WM_SETICON,ICON_SMALL,reinterpret_cast<LPARAM>(state.windowIcon(ICON_SMALL2,0)));
