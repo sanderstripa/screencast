@@ -14,10 +14,12 @@ public static class InstallFlow {
  [DllImport("user32.dll",CharSet=CharSet.Unicode)] static extern int GetClassName(IntPtr h,StringBuilder s,int n);
  [DllImport("user32.dll")] static extern uint GetWindowThreadProcessId(IntPtr h,out uint p);
  [DllImport("user32.dll")] public static extern IntPtr GetDlgItem(IntPtr h,int id);
+ [DllImport("user32.dll",EntryPoint="GetWindowLongPtrW")] static extern IntPtr GetStyle(IntPtr h,int index);
  [DllImport("user32.dll",CharSet=CharSet.Unicode)] public static extern bool SetWindowText(IntPtr h,string text);
  [DllImport("user32.dll",CharSet=CharSet.Unicode)] static extern int GetWindowText(IntPtr h,StringBuilder text,int count);
  [DllImport("user32.dll")] public static extern IntPtr SendMessage(IntPtr h,uint m,IntPtr w,IntPtr l);
  public static string Text(IntPtr h){var s=new StringBuilder(1024);GetWindowText(h,s,1024);return s.ToString();}
+ public static bool Shown(IntPtr h){return (GetStyle(h,-16).ToInt64()&0x10000000)!=0;}
  public static IntPtr Find(uint process,string name){IntPtr result=IntPtr.Zero;EnumWindows((h,p)=>{uint owner;GetWindowThreadProcessId(h,out owner);var s=new StringBuilder(128);GetClassName(h,s,128);if(owner==process&&s.ToString()==name){result=h;return false;}return true;},IntPtr.Zero);return result;}
 }
 '@
@@ -32,7 +34,7 @@ foreach($attempt in 1..2){
   Wait-For {[InstallFlow]::GetDlgItem($script:flowWindow,9)-ne[IntPtr]::Zero} 'Installation path field absent'
   [void][InstallFlow]::SetWindowText([InstallFlow]::GetDlgItem($script:flowWindow,9),$target)
   Click $script:flowWindow 5;Click $script:flowWindow 6;Click $script:flowWindow 4
-  Wait-For {[InstallFlow]::Text([InstallFlow]::GetDlgItem($script:flowWindow,4))-in @('Готово','Done')} 'Real installation did not finish'
+  Wait-For {$button=[InstallFlow]::GetDlgItem($script:flowWindow,4);[InstallFlow]::Shown($button)-and[InstallFlow]::Text($button)-in @('Готово','Done')} 'Real installation did not finish'
   foreach($file in @('Screencast.exe','Screencast-Uninstall.exe','assets/Montserrat.ttf','installed-files.txt')){if(-not(Test-Path -LiteralPath (Join-Path $target $file))){throw "Missing installed file: $file"}}
   $registration=Get-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\Screencast'
   if($registration.DisplayVersion-ne'0.3.7'-or$registration.InstallLocation-ne$target){throw 'Installer registration/version/path mismatch'}

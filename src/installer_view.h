@@ -22,7 +22,7 @@ class InstallerView {
         float scale=float(image.bitmap->GetWidth())/(tile?float(source.right-source.left):float(px(installerVisual::width)));
         g.SetInterpolationMode(scale==1?Gdiplus::InterpolationModeNearestNeighbor:Gdiplus::InterpolationModeHighQualityBicubic);
         if(tile)g.DrawImage(image.bitmap.get(),Gdiplus::Rect(destination.left,destination.top,destination.right-destination.left,destination.bottom-destination.top),0,0,int(image.bitmap->GetWidth()),int(image.bitmap->GetHeight()),Gdiplus::UnitPixel);
-        else g.DrawImage(image.bitmap.get(),Gdiplus::Rect(destination.left,destination.top,destination.right-destination.left,destination.bottom-destination.top),source.left*scale,source.top*scale,(source.right-source.left)*scale,(source.bottom-source.top)*scale,Gdiplus::UnitPixel);
+        else g.DrawImage(image.bitmap.get(),Gdiplus::RectF(float(destination.left),float(destination.top),float(destination.right-destination.left),float(destination.bottom-destination.top)),source.left*scale,source.top*scale,(source.right-source.left)*scale,(source.bottom-source.top)*scale,Gdiplus::UnitPixel);
     }
 public:
     HWND window{},pathEdit{};bool english{},dark{},desktop{true},startMenu{true},launch{true};int stage{},dpi{96},snapshotDpi{};
@@ -41,6 +41,7 @@ public:
         if(pathEdit)SendMessageW(pathEdit,WM_SETFONT,reinterpret_cast<WPARAM>(smallFont),TRUE);
     }
     void theme(){
+        images.clear();
         if(background)DeleteObject(background);if(fieldBrush)DeleteObject(fieldBrush);background=CreateSolidBrush(bg());fieldBrush=CreateSolidBrush(field());
         BOOL d=dark;DwmSetWindowAttribute(window,DWMWA_USE_IMMERSIVE_DARK_MODE,&d,sizeof(d));auto border=bg();DwmSetWindowAttribute(window,DWMWA_BORDER_COLOR,&border,sizeof(border));
         InvalidateRect(window,nullptr,FALSE);for(auto [id,b]:buttons)InvalidateRect(b,nullptr,FALSE);if(pathEdit)InvalidateRect(pathEdit,nullptr,FALSE);
@@ -49,11 +50,12 @@ public:
         switch(id){
         case 1:return L"RU";case 12:return L"EN";case 2:return tr(L"Светлая",L"Light");case 13:return tr(L"Тёмная",L"Dark");
         case 3:return stage==0?tr(L"Настройки установки",L"Installation settings"):tr(L"Назад",L"Back");
-        case 4:return stage==0?tr(L"Установить",L"Install"):stage==1?tr(L"Принять и установить",L"Accept and install"):tr(L"Готово",L"Done");
+        case 4:return stage==0?tr(L"Установить",L"Install"):stage==1?tr(L"Принять и установить",L"Accept and install"):stage==2?tr(L"Установка…",L"Installing…"):tr(L"Готово",L"Done");
         case 5:return tr(L"Ярлык на рабочем столе",L"Desktop shortcut");case 6:return tr(L"Ярлык в меню «Пуск»",L"Start menu shortcut");case 7:return tr(L"Запустить Screencast после установки",L"Launch Screencast after installation");
         case 8:return tr(L"Выбрать…",L"Browse…");case 10:return tr(L"Свернуть",L"Minimize");case 11:return tr(L"Закрыть",L"Close");default:return L"";}
     }
     void rebuild(){
+        images.clear();
         for(auto [id,b]:buttons){auto r=box(id);bool visible=r.right>r.left&&r.bottom>r.top;ShowWindow(b,visible?SW_SHOW:SW_HIDE);
             if(visible)SetWindowPos(b,nullptr,r.left,r.top,r.right-r.left,r.bottom-r.top,SWP_NOZORDER|SWP_NOACTIVATE);
             auto name=label(id);SetWindowTextW(b,name.c_str());EnableWindow(b,!(stage==2&&id==11));InvalidateRect(b,nullptr,FALSE);}
