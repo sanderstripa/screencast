@@ -1,0 +1,1 @@
+PASS: 16 RU/EN light/dark stage previews; Montserrat loaded; no clipped controls; version 0.3.7 on every screen; no extension content; working language/theme and shortcut/launch selections; preview-only navigation/progress. No installer/app build or release performed.
