@@ -693,12 +693,12 @@ public:
             require(windowPosition::restore(window,preferencesKey.c_str()),L"Shutdown position did not persist");
             GetWindowRect(window,&current);require(current.left==target.x+4&&current.top==target.y+4,L"Shutdown saved the wrong position");
             HKEY positionKey{};require(RegOpenKeyExW(HKEY_CURRENT_USER,preferencesKey.c_str(),0,KEY_SET_VALUE,&positionKey)==ERROR_SUCCESS,L"Position test registry unavailable");
-            POINT missingMonitor{MAXLONG,MINLONG};RegSetValueExW(positionKey,L"WindowPosition",0,REG_BINARY,reinterpret_cast<BYTE const*>(&missingMonitor),sizeof(missingMonitor));RegCloseKey(positionKey);
+            POINT missingMonitor{2147483647L,(-2147483647L-1L)};RegSetValueExW(positionKey,L"WindowPosition",0,REG_BINARY,reinterpret_cast<BYTE const*>(&missingMonitor),sizeof(missingMonitor));RegCloseKey(positionKey);
             require(windowPosition::restore(window,preferencesKey.c_str()),L"Disconnected monitor fallback failed");
             GetWindowRect(window,&current);monitor={sizeof(monitor)};GetMonitorInfoW(MonitorFromWindow(window,MONITOR_DEFAULTTONEAREST),&monitor);
             require(current.left>=monitor.rcWork.left&&current.top>=monitor.rcWork.top&&current.right<=std::max(monitor.rcWork.right,monitor.rcWork.left+size.cx)&&current.bottom<=std::max(monitor.rcWork.bottom,monitor.rcWork.top+size.cy),L"Restored window is outside the work area");
             auto negative=windowPosition::fit(POINT{-1700,100},SIZE{1000,640},RECT{-1920,0,0,1080});require(negative.x==-1700&&negative.y==100,L"Negative secondary-monitor coordinates were discarded");
-            auto small=windowPosition::fit(POINT{900,700},SIZE{1000,640},RECT{0,0,800,600});require(small.x==0&&small.y==0,L"Small display must keep the titlebar reachable without resizing");
+            auto smallDisplay=windowPosition::fit(POINT{900,700},SIZE{1000,640},RECT{0,0,800,600});require(smallDisplay.x==0&&smallDisplay.y==0,L"Small display must keep the titlebar reachable without resizing");
             require(RegOpenKeyExW(HKEY_CURRENT_USER,preferencesKey.c_str(),0,KEY_SET_VALUE,&positionKey)==ERROR_SUCCESS,L"Position test registry unavailable");
             DWORD invalid=7;RegSetValueExW(positionKey,L"WindowPosition",0,REG_BINARY,reinterpret_cast<BYTE const*>(&invalid),sizeof(invalid));RegCloseKey(positionKey);
             require(!windowPosition::restore(window,preferencesKey.c_str()),L"Malformed saved position was accepted");
