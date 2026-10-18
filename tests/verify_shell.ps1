@@ -121,7 +121,12 @@ foreach($minimizeBeforeClose in @($true,$false)) {
   if($window-eq[IntPtr]::Zero){throw 'Position restart did not open a window'}
   [ShellCheck]::SendMessage($window,0,[IntPtr]::Zero,[IntPtr]::Zero)|Out-Null
   $actual=New-Object ShellCheck+Rect
-  [ShellCheck]::GetWindowRect($window,[ref]$actual)|Out-Null
+  $deadline=[DateTime]::UtcNow.AddSeconds(5)
+  do {
+   [ShellCheck]::GetWindowRect($window,[ref]$actual)|Out-Null
+   $matches=$actual.left-eq$savedPosition.left-and$actual.top-eq$savedPosition.top-and$actual.right-eq$savedPosition.right-and$actual.bottom-eq$savedPosition.bottom
+   if($matches){break};Start-Sleep -Milliseconds 50
+  } while([DateTime]::UtcNow-lt$deadline)
   foreach($field in @('left','top','right','bottom')){if($actual.$field-ne$savedPosition.$field){throw "Window position/size changed across process restart: $field"}}
   if($minimizeBeforeClose){[ShellCheck]::ShowWindow($window,6)|Out-Null}
  } finally {
