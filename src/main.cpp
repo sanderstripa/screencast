@@ -687,11 +687,12 @@ public:
             command(Minimize);require(!windowPosition::save(window,preferencesKey.c_str()),L"Minimized coordinates overwrote window position");
             SingleInstance::activate(window);require(windowPosition::restore(window,preferencesKey.c_str()),L"Minimized close lost window position");
             GetWindowRect(window,&current);require(current.left==target.x&&current.top==target.y,L"Minimized position changed saved placement");
-            SetWindowPos(window,nullptr,target.x+4,target.y+4,0,0,SWP_NOSIZE|SWP_NOZORDER|SWP_NOACTIVATE);
+            auto shutdownTarget=windowPosition::fit(POINT{target.x-4,target.y-4},size,monitor.rcWork);
+            SetWindowPos(window,nullptr,shutdownTarget.x,shutdownTarget.y,0,0,SWP_NOSIZE|SWP_NOZORDER|SWP_NOACTIVATE);
             require(SendMessageW(window,WM_QUERYENDSESSION,0,0)==TRUE,L"Shutdown position save blocked Windows");
             SetWindowPos(window,nullptr,target.x,target.y,0,0,SWP_NOSIZE|SWP_NOZORDER|SWP_NOACTIVATE);
             require(windowPosition::restore(window,preferencesKey.c_str()),L"Shutdown position did not persist");
-            GetWindowRect(window,&current);require(current.left==target.x+4&&current.top==target.y+4,L"Shutdown saved the wrong position");
+            GetWindowRect(window,&current);require(current.left==shutdownTarget.x&&current.top==shutdownTarget.y,L"Shutdown saved the wrong position");
             HKEY positionKey{};require(RegOpenKeyExW(HKEY_CURRENT_USER,preferencesKey.c_str(),0,KEY_SET_VALUE,&positionKey)==ERROR_SUCCESS,L"Position test registry unavailable");
             POINT missingMonitor{2147483647L,(-2147483647L-1L)};RegSetValueExW(positionKey,L"WindowPosition",0,REG_BINARY,reinterpret_cast<BYTE const*>(&missingMonitor),sizeof(missingMonitor));RegCloseKey(positionKey);
             require(windowPosition::restore(window,preferencesKey.c_str()),L"Disconnected monitor fallback failed");
