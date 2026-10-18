@@ -26,7 +26,9 @@ public static class InstallFlow {
 '@
 function Wait-For([scriptblock]$Condition,[string]$Failure,[int]$Seconds=45){$end=[DateTime]::UtcNow.AddSeconds($Seconds);do{if(& $Condition){return};Start-Sleep -Milliseconds 100}while([DateTime]::UtcNow-lt$end);throw $Failure}
 function Click([IntPtr]$Window,[int]$Id){[void][InstallFlow]::SendMessage($Window,0x111,[IntPtr]$Id,[IntPtr]::Zero)}
-foreach($attempt in 1..2){
+New-Item 'HKCU:\Software\Screencast' -Force > $null
+New-ItemProperty 'HKCU:\Software\Screencast' -Name SaveFolder -Value (Join-Path $Directory 'preserved-recordings') -PropertyType String -Force > $null
+foreach($attempt in 1..4){
  $process=Start-Process -FilePath $Setup -WindowStyle Hidden -PassThru
  $script:flowWindow=[IntPtr]::Zero
  try{
@@ -35,13 +37,24 @@ foreach($attempt in 1..2){
   Wait-For {[InstallFlow]::GetDlgItem($script:flowWindow,9)-ne[IntPtr]::Zero} 'Installation path field absent'
   [void][InstallFlow]::SetText([InstallFlow]::GetDlgItem($script:flowWindow,9),0xC,[IntPtr]::Zero,$target)
   Wait-For {[InstallFlow]::Text([InstallFlow]::GetDlgItem($script:flowWindow,9))-eq$target} 'Edited destination did not reach the real native path field'
+  $theme=if($attempt-le2){1}else{2};$english=if($attempt%2-eq1){1}else{0}
+  Click $script:flowWindow $(if($english){12}else{1})
+  Click $script:flowWindow $(if($theme-eq1){2}else{13})
+  if(-not[InstallFlow]::Shown([InstallFlow]::GetDlgItem($script:flowWindow,9))){throw 'Theme/language change left installation settings'}
   Click $script:flowWindow 5;Click $script:flowWindow 6;Click $script:flowWindow 4
   Wait-For {$button=[InstallFlow]::GetDlgItem($script:flowWindow,4);[InstallFlow]::Shown($button)-and[InstallFlow]::Text($button)-in @('Готово','Done')} 'Real installation did not finish'
   $registration=Get-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\Screencast'
-  if($registration.DisplayVersion-ne'0.3.7'-or$registration.InstallLocation-ne$target){throw "Installer registration/version/path mismatch: actual=$($registration.InstallLocation), expected=$target, version=$($registration.DisplayVersion)"}
+  if($registration.DisplayVersion-ne'0.3.8'-or$registration.InstallLocation-ne$target){throw "Installer registration/version/path mismatch: actual=$($registration.InstallLocation), expected=$target, version=$($registration.DisplayVersion)"}
+  $preferences=Get-ItemProperty 'HKCU:\Software\Screencast'
+  if($preferences.Theme-ne$theme-or$preferences.English-ne$english){throw 'Installer did not persist selected application appearance'}
+  if($preferences.SaveFolder-ne(Join-Path $Directory 'preserved-recordings')){throw 'Installer overwrote unrelated application preferences'}
   foreach($file in @('Screencast.exe','Screencast-Uninstall.exe','assets/Montserrat.ttf','installed-files.txt')){if(-not(Test-Path -LiteralPath (Join-Path $target $file))){throw "Missing installed file: $file"}}
   Click $script:flowWindow 7;Click $script:flowWindow 4
   if(-not $process.WaitForExit(15000)-or$process.ExitCode-ne0){throw 'Installer completion failed'}
+  $testOutput=Join-Path $Directory "installed-app-check-$attempt"
+  $app=Start-Process -FilePath (Join-Path $target 'Screencast.exe') -ArgumentList '--ui-test',('"'+$testOutput+'"'),$theme,$english -WindowStyle Hidden -PassThru
+  if(-not$app.WaitForExit(30000)-or$app.ExitCode-ne0){throw 'Installed application did not load selected theme/language or pass UI check'}
+  Get-Content (Join-Path $testOutput 'startup-preferences.txt')
  }finally{if(-not$process.HasExited){$process.Kill()}}
 }
 $testOutput=Join-Path $Directory 'installed-app-check'
@@ -57,4 +70,4 @@ try{
  if(Test-Path -LiteralPath (Join-Path $target 'Screencast.exe')){throw 'Uninstaller left the application behind'}
  if(Test-Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\Screencast'){throw 'Uninstaller left its registration behind'}
 }finally{if(-not$uninstall.HasExited){$uninstall.Kill()}}
-'PASS: real installation, same-version reinstall, registered version/path, installed-app UI, confirmation and actual uninstall/self-removal.'
+'PASS: real installation/reinstall in all four theme/language combinations; installed-app startup and UI changes; unrelated preferences preserved; registered version/path; actual uninstall/self-removal.'

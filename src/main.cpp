@@ -946,7 +946,15 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int show) {
         SendMessageW(hwnd,WM_SETICON,ICON_BIG,reinterpret_cast<LPARAM>(state.windowIcon(ICON_BIG,0)));
         SendMessageW(hwnd,WM_SETICON,ICON_SMALL,reinterpret_cast<LPARAM>(state.windowIcon(ICON_SMALL2,0)));
         ShowWindow(hwnd, show); UpdateWindow(hwnd);
-        if(args.size()>=3&&args[1]==L"--ui-test"){state.uiTest(args[2]);DestroyWindow(hwnd);}
+        if(args.size()>=3&&args[1]==L"--ui-test"){
+            if(args.size()>=5){
+                if(state.theme!=std::stoi(args[3]) || state.english!=(args[4]==L"1"))
+                    throw std::runtime_error("Installed application did not load installer theme/language");
+                std::ofstream initial(std::filesystem::path(args[2])/L"startup-preferences.txt");
+                initial<<"PASS: loaded installer Theme="<<state.theme<<", English="<<state.english<<" before application UI tests.\n";
+            }
+            state.uiTest(args[2]);DestroyWindow(hwnd);
+        }
         if(instanceGuard)instanceGuard->markReady();
         if (!state.snapshotPath.empty()) SetTimer(hwnd, 2, 1000, nullptr);
         if(!state.idleTestPath.empty())SetTimer(hwnd,3,1000,nullptr);

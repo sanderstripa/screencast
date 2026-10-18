@@ -95,16 +95,20 @@ public:
         SelectObject(dc,old);DeleteObject(bitmap);DeleteDC(dc);ReleaseDC(window,screen);
     }
     void uiTest(std::filesystem::path const& directory){
-        auto require=[](bool value,char const* message){if(!value)throw std::runtime_error(message);};auto click=[&](int id){SendMessageW(window,WM_COMMAND,id,0);};
+        auto require=[](bool value,char const* message){if(!value)throw std::runtime_error(message);};auto click=[&](int id){SetFocus(buttons.at(id));SendMessageW(buttons.at(id),BM_CLICK,0,0);};
         require(!(GetWindowLongPtrW(window,GWL_STYLE)&(WS_CAPTION|WS_MAXIMIZEBOX)),"Installer must remain frameless");
-        click(3);require(stage==1,"Settings did not open");click(12);require(english,"English control failed");click(13);require(dark,"Dark control failed");
+        click(3);require(stage==1,"Settings did not open");click(12);require(english&&stage==1,"English control left settings");click(13);require(dark&&stage==1,"Dark control left settings");
+        SetFocus(nullptr);require(stage==1,"Losing focus left settings");
+        for(int id:{1,12,2,13,3,5,6,8,10,11})for(int notification:{BN_SETFOCUS,BN_KILLFOCUS})
+            SendMessageW(window,WM_COMMAND,MAKEWPARAM(id,notification),reinterpret_cast<LPARAM>(buttons.at(id)));
+        require(stage==1&&english&&dark&&desktop&&startMenu&&!IsIconic(window),"Focus notifications executed button commands");
         click(5);click(6);require(!desktop&&!startMenu,"Shortcut switches failed");click(3);require(stage==0,"Back did not return home");click(3);require(!desktop&&!startMenu,"Navigation reset shortcut choices");
         wchar_t edited[32768]{};auto selected=(directory/L"chosen path").wstring();SetWindowTextW(pathEdit,selected.c_str());click(1);click(2);GetWindowTextW(pathEdit,edited,32768);require(selected==edited,"Theme/language changes reset the edited path");
         for(int scale:{144,192,96}){dpi=scale;fonts();SetWindowPos(window,nullptr,0,0,px(installerVisual::width),px(installerVisual::height),SWP_NOMOVE|SWP_NOZORDER|SWP_NOACTIVATE);rebuild();
             for(auto [id,b]:buttons)if(GetWindowLongPtrW(b,GWL_STYLE)&WS_VISIBLE){auto r=box(id);require(r.left>=0&&r.top>=0&&r.right<=px(installerVisual::width)&&r.bottom<=px(installerVisual::height),"Installer DPI clips a control");}paintToTest();}
         stage=2;rebuild();SendMessageW(window,WM_CLOSE,0,0);require(IsWindow(window)&&!IsWindowEnabled(buttons[11]),"Installer can close during extraction");
         stage=3;rebuild();require(!(GetWindowLongPtrW(buttons[3],GWL_STYLE)&WS_VISIBLE),"Completion has an extra cancel/settings action");click(7);require(!launch,"Launch switch failed");click(10);require(IsIconic(window),"Minimize failed");ShowWindow(window,SW_RESTORE);
-        std::filesystem::create_directories(directory);std::ofstream report(directory/L"installer-ui.txt");report<<"PASS: approved native installer presentation; working RU/EN/light/dark, shortcut and launch switches, path edits preserved, settings/back navigation, DPI resources at 96/144/192, busy-close guard, minimize, completion without cancel. No installation was performed by this UI-only check.\n";report.close();click(4);
+        std::filesystem::create_directories(directory);std::ofstream report(directory/L"installer-ui.txt");report<<"PASS: approved native installer presentation; focus notifications ignored, settings retained on theme/language and focus changes; working RU/EN/light/dark, shortcut and launch switches, path edits preserved, settings/back navigation, DPI resources at 96/144/192, busy-close guard, minimize, completion without cancel. No installation was performed by this UI-only check.\n";report.close();click(4);
     }
     void paintToTest(){HDC screen=GetDC(window),dc=CreateCompatibleDC(screen);auto bitmap=CreateCompatibleBitmap(screen,px(installerVisual::width),px(installerVisual::height));auto old=SelectObject(dc,bitmap);paint(dc);SelectObject(dc,old);DeleteObject(bitmap);DeleteDC(dc);ReleaseDC(window,screen);}
     ~InstallerView(){for(auto f:{font,heading,smallFont})if(f)DeleteObject(f);if(background)DeleteObject(background);if(fieldBrush)DeleteObject(fieldBrush);}

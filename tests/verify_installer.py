@@ -6,7 +6,7 @@ import numpy as np
 root=Path(sys.argv[1]);repo=Path(__file__).resolve().parents[1]
 generated=repo/'installer/generated'
 manifest=json.loads((generated/'manifest.json').read_text())
-assert manifest['version']=='0.3.7'
+assert manifest['version']=='0.3.8'
 for name,digest in manifest['sources'].items():
     data=(repo/'installer/visual-review'/name).read_bytes()
     if name.endswith(('.html','.css','.js')):data=data.replace(b'\r\n',b'\n')
@@ -47,4 +47,4 @@ for theme,expected in [('light',(242,240,235)),('dark',(32,33,34))]:
             tile=np.asarray(Image.open(generated/f'off-96-0-{int(theme=="dark")}-{control}.png').convert('RGB'))
             assert np.max(abs(off[t:b,l:r].astype(int)-tile.astype(int)))<=2,'Unchecked switch differs from approved reference'
             assert np.count_nonzero(np.any(on[t:b,l:l+39]!=off[t:b,l:l+39],axis=2))>50,'Switch does not visibly change'
-print('PASS: native installer matches approved RU/EN/light/dark screens, lavender ribbon, 0.3.7 footer, live progress/path and switch states; 224 DPI resource hashes verified.')
+print('PASS: native installer matches approved RU/EN/light/dark screens, lavender ribbon, 0.3.8 footer, live progress/path and switch states; 224 DPI resource hashes verified.')

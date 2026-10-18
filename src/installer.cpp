@@ -84,7 +84,8 @@ public:
     std::thread worker;
     void install() {
         std::wstring selected(32768,0);selected.resize(GetWindowTextW(pathEdit,selected.data(),int(selected.size())));auto destination=safeDestination(selected);path=destination.wstring();stage=2;progress=5;rebuild();
-        worker=std::thread([this,destination]{
+        const DWORD selectedTheme=dark?2:1,selectedEnglish=english?1:0;
+        worker=std::thread([this,destination,selectedTheme,selectedEnglish]{
             try {
                 winrt::init_apartment();extract(destination);progress=75;
                 wchar_t self[32768]{};GetModuleFileNameW(nullptr,self,32768);std::filesystem::copy_file(self,destination/L"Screencast-Uninstall.exe",std::filesystem::copy_options::overwrite_existing);
@@ -94,7 +95,13 @@ public:
                 if(startMenu) {auto group=std::filesystem::path(folder(FOLDERID_Programs))/L"Screencast";std::filesystem::create_directories(group);shortcut((group/L"Screencast.lnk").wstring(),app,icon,L"SanderStripa.Screencast");shortcut((group/L"Uninstall.lnk").wstring(),(destination/L"Screencast-Uninstall.exe").wstring(),icon,L"SanderStripa.Screencast.Uninstall");}
                 HKEY key{};check(HRESULT_FROM_WIN32(RegCreateKeyExW(HKEY_CURRENT_USER,L"Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Screencast",0,nullptr,0,KEY_SET_VALUE,nullptr,&key,nullptr)));
                 auto put=[&](wchar_t const* name,std::wstring const& value){RegSetValueExW(key,name,0,REG_SZ,reinterpret_cast<BYTE const*>(value.c_str()),DWORD((value.size()+1)*2));};
-                put(L"DisplayName",L"Screencast");put(L"DisplayVersion",L"0.3.7");put(L"InstallLocation",path);put(L"DisplayIcon",icon);put(L"UninstallString",L"\""+(destination/L"Screencast-Uninstall.exe").wstring()+L"\" --uninstall");RegCloseKey(key);
+                put(L"DisplayName",L"Screencast");put(L"DisplayVersion",L"0.3.8");put(L"InstallLocation",path);put(L"DisplayIcon",icon);put(L"UninstallString",L"\""+(destination/L"Screencast-Uninstall.exe").wstring()+L"\" --uninstall");RegCloseKey(key);
+                // Initialize only appearance preferences, after successful extraction/registration.
+                // The application reads these same values on its first and subsequent launches.
+                check(HRESULT_FROM_WIN32(RegCreateKeyExW(HKEY_CURRENT_USER,L"Software\\Screencast",0,nullptr,0,KEY_SET_VALUE,nullptr,&key,nullptr)));
+                auto themeResult=RegSetValueExW(key,L"Theme",0,REG_DWORD,reinterpret_cast<BYTE const*>(&selectedTheme),sizeof(selectedTheme));
+                auto languageResult=RegSetValueExW(key,L"English",0,REG_DWORD,reinterpret_cast<BYTE const*>(&selectedEnglish),sizeof(selectedEnglish));
+                RegCloseKey(key);check(HRESULT_FROM_WIN32(themeResult));check(HRESULT_FROM_WIN32(languageResult));
                 progress=100;winrt::uninit_apartment();PostMessageW(window,Completed,1,0);
             }catch(...){error=errorText();PostMessageW(window,Completed,0,0);}
         });
@@ -114,7 +121,13 @@ Setup* setup{};
 LRESULT CALLBACK proc(HWND h,UINT m,WPARAM w,LPARAM l) {
     try {
         if(m==WM_CREATE){setup->window=h;setup->create();return 0;}
-        if(m==WM_COMMAND){setup->command(LOWORD(w));return 0;}
+        if(m==WM_COMMAND){
+            // BS_NOTIFY also sends focus notifications. Only clicks are commands.
+            auto button=setup->buttons.find(LOWORD(w));
+            if(HIWORD(w)==BN_CLICKED && button!=setup->buttons.end() &&
+               (!l || reinterpret_cast<HWND>(l)==button->second))setup->command(LOWORD(w));
+            return 0;
+        }
         if(m==WM_DRAWITEM){auto item=*reinterpret_cast<DRAWITEMSTRUCT*>(l);bufferedPaint(item.hDC,item.rcItem,[&](HDC back){item.hDC=back;setup->draw(item);});return TRUE;}
         if(m==WM_PAINT){PAINTSTRUCT p{};auto dc=BeginPaint(h,&p);RECT rect{};GetClientRect(h,&rect);bufferedPaint(dc,rect,[](HDC back){setup->paint(back);});EndPaint(h,&p);return 0;}
         if(m==WM_NCCALCSIZE)return 0;
