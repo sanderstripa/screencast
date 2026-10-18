@@ -2,3 +2,4 @@
 101 ICON "@CMAKE_CURRENT_SOURCE_DIR@/assets/Screencast.ico"
 201 RCDATA "@SCREENCAST_PAYLOAD@"
 202 RCDATA "@CMAKE_CURRENT_SOURCE_DIR@/assets/Montserrat.ttf"
+#include "installer_visual_assets.rc"

@@ -94,6 +94,10 @@ jobs:
           $process = Start-Process dist/Screencast-Setup-x64.exe -ArgumentList '--install-test', $testDir -WindowStyle Hidden -PassThru
           if (-not $process.WaitForExit(60000)) { $process.Kill(); throw 'Installer test timed out' }
           if ($process.ExitCode -ne 0 -or (Test-Path "$testDir/Screencast.exe")) { throw 'Installer extraction/uninstall test failed' }
+          $process = Start-Process dist/Screencast-Setup-x64.exe -ArgumentList '--wizard-test', (Join-Path $PWD 'build/smoke') -WindowStyle Hidden -PassThru
+          if (-not $process.WaitForExit(30000)) { $process.Kill(); throw 'Native installer UI test timed out' }
+          if ($process.ExitCode -ne 0) { Get-Content build/smoke/installer-ui-error.txt -ErrorAction SilentlyContinue; throw 'Native installer UI behavior failed' }
+          Get-Content build/smoke/installer-ui.txt
           foreach ($language in @('ru','en')) { foreach ($theme in @('light','dark')) { foreach ($page in 0..3) {
             $image = Join-Path $PWD "build/smoke/setup-$language-$theme-$page.png"
             $process = Start-Process dist/Screencast-Setup-x64.exe -ArgumentList "--snapshot-$language-$theme",$image,$page -WindowStyle Hidden -PassThru
@@ -105,6 +109,7 @@ jobs:
             if (-not $process.WaitForExit(15000) -or $process.ExitCode -ne 0) { throw 'Unchecked installer snapshot failed' }
           } }
           python tests/verify_installer.py build/smoke
+          ./tests/verify_install_flow.ps1 -Setup dist/Screencast-Setup-x64.exe -Directory (Join-Path $PWD 'build/full-install-test')
       - name: Verify shortcut icons and actual repeat launches
         run: |
           $directory = Join-Path $PWD 'build/smoke/shortcuts'

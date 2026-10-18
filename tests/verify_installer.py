@@ -1,33 +1,50 @@
 from pathlib import Path
-import sys
+import sys,json,hashlib,math
 from PIL import Image
 import numpy as np
 
-root=Path(sys.argv[1])
-for page in range(4):
-    for theme,expected in [('light',(247,247,245)),('dark',(12,12,13))]:
+root=Path(sys.argv[1]);repo=Path(__file__).resolve().parents[1]
+generated=repo/'installer/generated'
+manifest=json.loads((generated/'manifest.json').read_text())
+assert manifest['version']=='0.3.7'
+for name,digest in manifest['sources'].items():
+    data=(repo/'installer/visual-review'/name).read_bytes()
+    if name.endswith(('.html','.css','.js')):data=data.replace(b'\r\n',b'\n')
+    assert hashlib.sha256(data).hexdigest()==digest,f'Approved installer source changed: {name}'
+for asset in manifest['assets']:
+    assert hashlib.sha256((generated/asset['file']).read_bytes()).hexdigest()==asset['sha256'],f'Native presentation asset changed: {asset["file"]}'
+
+def bounds(language,page,control):
+    return tuple((math.floor if i<2 else math.ceil)(v) for i,v in enumerate(manifest['layout'][f'{language}-{page}'][str(control)]))
+
+for theme,expected in [('light',(242,240,235)),('dark',(32,33,34))]:
+    for page in range(4):
         images=[]
-        for language in ['ru','en']:
-            a=np.array(Image.open(root/f'setup-{language}-{theme}-{page}.png').convert('RGB'))
-            assert a.shape==(484,680,3)
-            assert np.max(abs(a[8,8].astype(int)-expected))<=1
-            assert np.std(a[28:140,284:396])>30, 'Application icon absent'
-            assert np.std(a[430:468,528:660])>15, 'Primary action absent'
-            images.append(a)
-        assert np.mean(abs(images[0].astype(float)-images[1]))>.05, 'Language does not change the wizard'
-for theme,expected in [('light',(247,247,245)),('dark',(12,12,13))]:
-    def blue_count(a):
-        return np.count_nonzero((a[:,:,2].astype(int)>a[:,:,0].astype(int)+60)&(a[:,:,1].astype(int)>a[:,:,0].astype(int)+30))
-    on=np.array(Image.open(root/f'setup-ru-{theme}-1.png').convert('RGB'))
-    off=np.array(Image.open(root/f'setup-ru-{theme}-1-off.png').convert('RGB'))
-    ink=np.array((237,237,238) if theme=='dark' else (23,26,29))
-    def ink_count(a):return np.count_nonzero(np.max(abs(a.astype(int)-ink),axis=2)<8)
-    assert ink_count(on[288:354,36:75])>300, 'Enabled shortcuts lack monochrome contrast'
-    assert ink_count(off[288:354,36:75])<40, 'Disabled shortcuts still show active fill'
-    assert np.max(abs(on[360:390,36:624].astype(int)-expected))<=1, 'Duplicate launch option remains on folder page'
-    finish=np.array(Image.open(root/f'setup-ru-{theme}-3.png').convert('RGB'))
-    finish_off=np.array(Image.open(root/f'setup-ru-{theme}-3-off.png').convert('RGB'))
-    assert np.max(abs(finish[430:468,396:516].astype(int)-expected))<=1, 'Cancel remains on completion page'
-    # Restrict the check to the circle: ClearType text has blue subpixel fringes.
-    assert ink_count(finish[322:352,150:210])>150 and ink_count(finish_off[322:352,150:210])<40, 'Completion check does not visibly change'
-print('All four installer pages rendered in RU/EN and light/dark themes')
+        for language,locale in enumerate(('ru','en')):
+            frame=np.asarray(Image.open(root/f'setup-{locale}-{theme}-{page}.png').convert('RGB'))
+            assert frame.shape==(540,840,3),'Installer footprint differs from approved 840x540 layout'
+            base=Image.open(generated/f'page-96-{language}-{int(theme=="dark")}-{page}.png').convert('RGBA')
+            reference=np.asarray(Image.alpha_composite(Image.new('RGBA',base.size,(*expected,255)),base).convert('RGB'))
+            stable=np.ones(frame.shape[:2],dtype=bool)
+            if page==1:
+                l,t,r,b=bounds(language,page,14);stable[t:b,l:r]=False
+                assert np.std(frame[t+7:b-7,l+10:r-10])>5,'Editable installation path is blank'
+            if page==2:
+                l,t,r,b=bounds(language,page,15);stable[max(0,t-3):b+3,max(0,l-3):r+3]=False
+                assert np.std(frame[t:b,l:r])>15,'Live installation progress is missing'
+            delta=np.max(np.abs(frame.astype(int)-reference.astype(int)),axis=2)
+            assert delta[stable].max()<=2,f'{locale}/{theme}/stage {page} differs from approved presentation: {delta[stable].max()}'
+            assert np.max(abs(frame[10,10].astype(int)-expected))<=1
+            assert np.std(frame[494:535,690:795])>5,'Application version footer missing'
+            if page in (0,2):assert np.std(frame[100:350,400:790] if page==0 else frame[90:340,200:650])>15,'Approved lavender ribbon missing'
+            images.append(frame)
+        assert np.count_nonzero(np.any(images[0]!=images[1],axis=2))>30,'Language does not change the actual wizard'
+    for page,controls in ((1,(5,6)),(3,(7,))):
+        on=np.asarray(Image.open(root/f'setup-ru-{theme}-{page}.png').convert('RGB'))
+        off=np.asarray(Image.open(root/f'setup-ru-{theme}-{page}-off.png').convert('RGB'))
+        for control in controls:
+            l,t,r,b=bounds(0,page,control)
+            tile=np.asarray(Image.open(generated/f'off-96-0-{int(theme=="dark")}-{control}.png').convert('RGB'))
+            assert np.max(abs(off[t:b,l:r].astype(int)-tile.astype(int)))<=2,'Unchecked switch differs from approved reference'
+            assert np.count_nonzero(np.any(on[t:b,l:l+39]!=off[t:b,l:l+39],axis=2))>50,'Switch does not visibly change'
+print('PASS: native installer matches approved RU/EN/light/dark screens, lavender ribbon, 0.3.7 footer, live progress/path and switch states; 224 DPI resource hashes verified.')

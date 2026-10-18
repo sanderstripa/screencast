@@ -20,10 +20,9 @@ has SHA-256 `b93ff7823f0738f192977be84a2897ece4f42e580df7033a7c0c701a1189eb28`.
 The cutout is a visual-review asset; it is not claimed to be pixel-identical to
 the source. Approval of its appearance is part of this review.
 
-**Approval gate:** do not finish a Windows installer/app build, tag a version,
-publish a release, or change the extraction/shortcut/uninstall implementation
-until the user approves these screens. Existing installer/application source and
-release packages are intentionally untouched during this visual-review step.
+**Approval received:** the user approved these screens and explicitly requested
+publication. This folder preserves the original review prototype. The production
+native integration and its verification are described in `../README.md`.
 
 Screens: `?stage=welcome`, `settings`, `installing`, `finish`.
 Additional query parameters: `theme=light|dark`, `lang=ru|en`.
@@ -32,5 +31,6 @@ Additional query parameters: `theme=light|dark`, `lang=ru|en`.
 Sixteen individual screenshots cover RU/EN and both themes. Browser checks passed
 font loading, clipping, version/footer content, absence of extension controls,
 navigation and persistent preview switch states (`screens/verification.txt`).
-The source installer, extraction/uninstall code, application version, existing
-Windows artifacts and main branch have not been changed or built.
+At the review stage, the source installer, extraction/uninstall code, application
+version, Windows artifacts and main branch were not changed or built. Subsequent
+release work is performed only after the explicit approval above.
