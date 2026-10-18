@@ -17,6 +17,16 @@ for icon in ('monitor','sun','moon'):
     assert np.array_equal(mask,native), 'Native theme mask differs from browser reference'
     theme_masks[icon] = mask.astype(float)/255
 images = []
+window_header=(repo/'src/vpn_window_pixels.h').read_text()
+window_masks={}
+for icon in ('minus','x'):
+    svg=(repo/f'assets/connect-ui/{icon}.svg').read_text().replace('\r\n','\n')
+    assert f'{icon} source SHA256 {hashlib.sha256(svg.encode()).hexdigest()}' in window_header
+    for dpi in (96,120,144,168,192,240,288,384):
+        mask=np.asarray(Image.open(repo/f'assets/connect-ui/{icon}-button-browser-{dpi}.png').convert('RGBA'))[:,:,3]
+        native=np.array([int(v) for v in re.search(rf'{icon}{dpi}\[\]=\{{([^}}]+)\}}',window_header)[1].split(',')],dtype=np.uint8).reshape(mask.shape)
+        assert np.array_equal(mask,native), f'{icon} native mask differs from VPN browser reference at {dpi} DPI'
+        if dpi==96:window_masks[icon]=mask.astype(float)/255
 for name, expected in (("light", (247, 247, 245)), ("dark", (12, 12, 13))):
     image = np.asarray(Image.open(root / f"theme-{name}.png").convert("RGB"))
     assert image.shape[0] >= 600 and image.shape[1] >= 950, 'Compact window must fit on a 1024x768 desktop'
@@ -31,6 +41,14 @@ for name, expected in (("light", (247, 247, 245)), ("dark", (12, 12, 13))):
     keyboard=np.array(Image.open(root/f'theme-{name}-keyboard-focus.png').convert('RGB'))
     assert np.array_equal(image,keyboard), 'Keyboard focus adds an unwanted highlight'
     hovered=np.array(Image.open(root/f'theme-{name}-window-hover.png').convert('RGB'))
+    hover_start=np.array(Image.open(root/f'theme-{name}-window-hover-start.png').convert('RGB'))
+    assert np.array_equal(hovered,hover_start), 'Window button hover must use settings icon foreground immediately, without a different tint ramp'
+    for icon,left in (('minus',image.shape[1]-86),('x',image.shape[1]-50)):
+        alpha=window_masks[icon][:,:,None]
+        for frame,foreground in ((image,(129,133,140) if name=='dark' else (128,133,139)),(hovered,(237,237,238) if name=='dark' else (23,26,29))):
+            reference=np.rint(alpha*np.array(foreground)+(1-alpha)*np.array(expected))
+            error=np.max(np.abs(frame[16:46,left:left+28].astype(float)-reference))
+            assert error<=2, f'{name} {icon} shape/size/centering/hover differs from VPN/settings reference: {error}'
     stable=np.ones(image.shape[:2],dtype=bool)
     for x in (image.shape[1]-86,image.shape[1]-50):stable[23:39,x+6:x+22]=False
     assert np.array_equal(image[stable],hovered[stable]), 'Minimize/close hover adds a background tile'

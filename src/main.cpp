@@ -46,7 +46,7 @@ public:
     int dpi{96}, theme{}, scroll{};
     bool dark{}, closing{}, finishing{};
     bool english{},settingsOpen{},settingsSnapshot{},keyboardFocusSnapshot{},testing{};
-    bool windowHoverSnapshot{},cornersApplied{};
+    bool windowHoverSnapshot{},windowHoverStartSnapshot{},cornersApplied{};
     bool positionReady{};
     void saveWindowPosition(){if(positionReady&&!testing)windowPosition::save(window,preferencesKey.c_str());}
     std::wstring saveFolder;
@@ -507,7 +507,7 @@ public:
         if (control.kind == Kind::Choice) label = control.items.empty() ? L"Нет доступных устройств" : control.items[control.selected];
         label=tr(label);
         if(item.CtlID==Minimize || item.CtlID==Close){
-            drawVpnIcon(dc,item.CtlID==Minimize?VpnIcon::Minus:VpnIcon::X,(r.right-px(15))/2,(r.bottom-px(15))/2,px(15),blend(palette.muted,palette.text,control.hot));
+            drawVpnWindowIcon(dc,item.CtlID==Minimize?VpnIcon::Minus:VpnIcon::X,r.right,r.bottom,dpi,control.hot>0?palette.text:palette.muted);
             return;
         }
         bool themeButton=item.CtlID>=ThemeSystem&&item.CtlID<=ThemeDark;
@@ -743,7 +743,7 @@ public:
         auto old = SelectObject(mem, bitmap);
         // Use the exact production paint routines even on a hidden CI window.
         // PrintWindow returns black for hidden windows on some Windows runners.
-        if(windowHoverSnapshot)for(int id:{Minimize,Close})controls[id].hot=1.f;
+        if(windowHoverSnapshot)for(int id:{Minimize,Close})controls[id].hot=windowHoverStartSnapshot?.1f:1.f;
         paint(mem);
         for (auto const& [id, c] : controls) {
             if(!(GetWindowLongPtrW(c.window,GWL_STYLE)&WS_VISIBLE))continue;
@@ -930,7 +930,8 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int show) {
             state.dropdownSnapshot=args.size()>=4 && args[3]==L"dropdown";
             state.settingsSnapshot=args.size()>=4 && (args[3]==L"settings"||args[3]==L"settings-focus");
             state.keyboardFocusSnapshot=args.size()>=4 && (args[3]==L"keyboard-focus"||args[3]==L"settings-focus");
-            state.windowHoverSnapshot=args.size()>=4&&args[3]==L"window-hover";
+            state.windowHoverSnapshot=args.size()>=4&&(args[3]==L"window-hover"||args[3]==L"window-hover-start");
+            state.windowHoverStartSnapshot=args.size()>=4&&args[3]==L"window-hover-start";
             state.english=args.size()>=5 && args[4]==L"en";
         }
         WNDCLASSEXW cls{sizeof(cls)}; cls.lpfnWndProc = procedure; cls.hInstance = instance;
