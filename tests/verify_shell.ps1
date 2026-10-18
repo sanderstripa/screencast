@@ -29,6 +29,9 @@ public static class ShellCheck {
  [DllImport("user32.dll")] public static extern IntPtr SendMessage(IntPtr window,uint message,IntPtr w,IntPtr l);
  [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr window,int command);
  [DllImport("user32.dll")] public static extern bool IsIconic(IntPtr window);
+ [StructLayout(LayoutKind.Sequential)] public struct Rect { public int left,top,right,bottom; }
+ [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr window,out Rect rect);
+ [DllImport("user32.dll")] public static extern bool SetWindowPos(IntPtr window,IntPtr after,int x,int y,int width,int height,uint flags);
  [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr window);
  [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr window,out uint pid);
  delegate bool Enumerate(IntPtr window,IntPtr data);
@@ -99,8 +102,31 @@ try {
   $windows=@([ShellCheck]::Windows())
   if($windows.Count-ne1-or$windows[0]-ne$window-or[ShellCheck]::IsIconic($window)-or-not[ShellCheck]::IsWindowVisible($window)){throw 'Repeat launch opened another window or did not restore the first'}
  }}
+ [ShellCheck]::SetWindowPos($window,[IntPtr]::Zero,90,100,0,0,0x15)|Out-Null
+ [ShellCheck]::SendMessage($window,0x232,[IntPtr]::Zero,[IntPtr]::Zero)|Out-Null
+ $savedPosition=New-Object ShellCheck+Rect
+ [ShellCheck]::GetWindowRect($window,[ref]$savedPosition)|Out-Null
  'Shortcuts: native 32/48/64/128 icons; all window icon requests match installer; six repeat launches restore one window.'
 }finally {
  if($window-ne[IntPtr]::Zero){[ShellCheck]::SendMessage($window,0x10,[IntPtr]::Zero,[IntPtr]::Zero)|Out-Null}
  if(-not$primary.WaitForExit(15000)){$primary.Kill();throw 'Test application did not close'}
 }
+# Actual new processes must restore placement, including after closing minimized.
+foreach($minimizeBeforeClose in @($true,$false)) {
+ $reopened=Start-Process -FilePath $App -WindowStyle Hidden -PassThru
+ $window=[IntPtr]::Zero
+ try {
+  $deadline=[DateTime]::UtcNow.AddSeconds(15)
+  while([DateTime]::UtcNow-lt$deadline){foreach($candidate in [ShellCheck]::Windows()){[uint32]$ownerPid=0;[ShellCheck]::GetWindowThreadProcessId($candidate,[ref]$ownerPid)|Out-Null;if($ownerPid-eq$reopened.Id){$window=$candidate;break}};if($window-ne[IntPtr]::Zero){break};Start-Sleep -Milliseconds 100}
+  if($window-eq[IntPtr]::Zero){throw 'Position restart did not open a window'}
+  [ShellCheck]::SendMessage($window,0,[IntPtr]::Zero,[IntPtr]::Zero)|Out-Null
+  $actual=New-Object ShellCheck+Rect
+  [ShellCheck]::GetWindowRect($window,[ref]$actual)|Out-Null
+  foreach($field in @('left','top','right','bottom')){if($actual.$field-ne$savedPosition.$field){throw "Window position/size changed across process restart: $field"}}
+  if($minimizeBeforeClose){[ShellCheck]::ShowWindow($window,6)|Out-Null}
+ } finally {
+  if($window-ne[IntPtr]::Zero){[ShellCheck]::SendMessage($window,0x10,[IntPtr]::Zero,[IntPtr]::Zero)|Out-Null}
+  if(-not$reopened.WaitForExit(15000)){$reopened.Kill();throw 'Reopened app did not close'}
+ }
+}
+'Window placement: exact position and unchanged size restored in two fresh processes, including after minimized close.'
