@@ -90,6 +90,7 @@ jobs:
           cmake -S . -B build -A x64 "-DSCREENCAST_PAYLOAD=$payload"
           cmake --build build --config Release --target ScreencastSetup --parallel
           Copy-Item build/Release/ScreencastSetup.exe dist/Screencast-Setup-x64.exe
+          Copy-Item dist/Screencast-Setup-x64.exe build/smoke/Screencast-Setup-x64.exe
           $testDir = Join-Path $PWD 'build/installer-test'
           $process = Start-Process dist/Screencast-Setup-x64.exe -ArgumentList '--install-test', $testDir -WindowStyle Hidden -PassThru
           if (-not $process.WaitForExit(60000)) { $process.Kill(); throw 'Installer test timed out' }
