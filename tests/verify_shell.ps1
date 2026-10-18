@@ -31,6 +31,7 @@ public static class ShellCheck {
  [DllImport("user32.dll")] public static extern bool IsIconic(IntPtr window);
  [StructLayout(LayoutKind.Sequential)] public struct Rect { public int left,top,right,bottom; }
  [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr window,out Rect rect);
+ [DllImport("user32.dll")] public static extern bool SystemParametersInfo(uint action,uint parameter,out Rect rect,uint flags);
  [DllImport("user32.dll")] public static extern bool SetWindowPos(IntPtr window,IntPtr after,int x,int y,int width,int height,uint flags);
  [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr window);
  [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr window,out uint pid);
@@ -102,7 +103,12 @@ try {
   $windows=@([ShellCheck]::Windows())
   if($windows.Count-ne1-or$windows[0]-ne$window-or[ShellCheck]::IsIconic($window)-or-not[ShellCheck]::IsWindowVisible($window)){throw 'Repeat launch opened another window or did not restore the first'}
  }}
- [ShellCheck]::SetWindowPos($window,[IntPtr]::Zero,90,100,0,0,0x15)|Out-Null
+ $workArea=New-Object ShellCheck+Rect;$beforeMove=New-Object ShellCheck+Rect
+ [ShellCheck]::SystemParametersInfo(0x30,0,[ref]$workArea,0)|Out-Null
+ [ShellCheck]::GetWindowRect($window,[ref]$beforeMove)|Out-Null
+ $moveX=[Math]::Max($workArea.left,[Math]::Min($workArea.left+20,$workArea.right-($beforeMove.right-$beforeMove.left)))
+ $moveY=[Math]::Max($workArea.top,[Math]::Min($workArea.top+20,$workArea.bottom-($beforeMove.bottom-$beforeMove.top)))
+ [ShellCheck]::SetWindowPos($window,[IntPtr]::Zero,$moveX,$moveY,0,0,0x15)|Out-Null
  [ShellCheck]::SendMessage($window,0x232,[IntPtr]::Zero,[IntPtr]::Zero)|Out-Null
  $savedPosition=New-Object ShellCheck+Rect
  [ShellCheck]::GetWindowRect($window,[ref]$savedPosition)|Out-Null
