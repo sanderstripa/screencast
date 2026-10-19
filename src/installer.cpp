@@ -19,6 +19,7 @@
 
 namespace {
 constexpr UINT Completed=WM_APP+20;
+constexpr UINT WebAction=WM_APP+21;
 std::wstring folder(REFKNOWNFOLDERID id) {PWSTR value{};check(SHGetKnownFolderPath(id,0,nullptr,&value));std::wstring result=value;CoTaskMemFree(value);return result;}
 void shortcut(std::wstring const& path,std::wstring const& target,std::wstring const& icon,wchar_t const* appId) {
     ComPtr<IShellLinkW> link;check(CoCreateInstance(CLSID_ShellLink,nullptr,CLSCTX_INPROC_SERVER,IID_PPV_ARGS(&link)));
@@ -84,6 +85,7 @@ class Setup : public InstallerView {
 public:
     std::thread worker;
     InstallerWeb web;
+    std::deque<std::wstring> webMessages;
     void syncWeb(){
         if(!web.initialized())return;
         wchar_t edited[32768]{};GetWindowTextW(pathEdit,edited,32768);
@@ -94,12 +96,17 @@ public:
     void rebuild(){InstallerView::rebuild();syncWeb();web.resize();}
     void theme(){InstallerView::theme();syncWeb();}
     void openWeb(){
-        web.open(window,[this](std::wstring message){try{
+        // Leave the COM callback before opening a modal Shell dialog or closing the window.
+        web.open(window,[this](std::wstring message){webMessages.push_back(std::move(message));PostMessageW(window,WebAction,0,0);});
+        syncWeb();
+    }
+    void dispatchWeb(){
+        if(webMessages.empty())return;auto message=std::move(webMessages.front());webMessages.pop_front();
+        try{
             if(message.starts_with(L"path:")){SetWindowTextW(pathEdit,message.substr(5).c_str());return;}
             if(message==L"drag"){ReleaseCapture();SendMessageW(window,WM_NCLBUTTONDOWN,HTCAPTION,0);return;}
             if(message.starts_with(L"command:")){command(std::stoi(message.substr(8)));if(IsWindow(window))syncWeb();}
-        }catch(...){notice(errorText());}});
-        syncWeb();
+        }catch(...){notice(errorText());}
     }
     void snapshot(){syncWeb();web.capture(snapshotPath);}
     void webTest(std::filesystem::path const& directory){
@@ -222,6 +229,7 @@ Setup* setup{};
 LRESULT CALLBACK proc(HWND h,UINT m,WPARAM w,LPARAM l) {
     try {
         if(m==WM_CREATE){setup->window=h;setup->create();return 0;}
+        if(m==WebAction){setup->dispatchWeb();return 0;}
         if(m==WM_COMMAND){
             if(HIWORD(w)==EN_CHANGE&&reinterpret_cast<HWND>(l)==setup->pathEdit){setup->syncWeb();return 0;}
             // BS_NOTIFY also sends focus notifications. Only clicks are commands.
