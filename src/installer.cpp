@@ -15,6 +15,7 @@
 #include <propsys.h>
 #include <shlwapi.h>
 #include <commctrl.h>
+#include "installer_web.h"
 
 namespace {
 constexpr UINT Completed=WM_APP+20;
@@ -82,6 +83,51 @@ void uninstallFiles(std::filesystem::path const& destination) {
 class Setup : public InstallerView {
 public:
     std::thread worker;
+    InstallerWeb web;
+    void syncWeb(){
+        if(!web.initialized())return;
+        wchar_t edited[32768]{};GetWindowTextW(pathEdit,edited,32768);
+        web.update(L"{english:"+std::to_wstring(english)+L",dark:"+std::to_wstring(dark)+L",stage:"+std::to_wstring(stage)+
+            L",desktop:"+std::to_wstring(desktop)+L",startMenu:"+std::to_wstring(startMenu)+L",launch:"+std::to_wstring(launch)+
+            L",progress:"+std::to_wstring(progress.load())+L",path:"+InstallerWeb::jsString(edited)+L"}");
+    }
+    void rebuild(){InstallerView::rebuild();syncWeb();web.resize();}
+    void theme(){InstallerView::theme();syncWeb();}
+    void openWeb(){
+        web.open(window,[this](std::wstring message){try{
+            if(message.starts_with(L"path:")){SetWindowTextW(pathEdit,message.substr(5).c_str());return;}
+            if(message==L"drag"){ReleaseCapture();SendMessageW(window,WM_NCLBUTTONDOWN,HTCAPTION,0);return;}
+            if(message.starts_with(L"command:")){command(std::stoi(message.substr(8)));if(IsWindow(window))syncWeb();}
+        }catch(...){notice(errorText());}});
+        syncWeb();
+    }
+    void snapshot(){syncWeb();web.capture(snapshotPath);}
+    void webTest(std::filesystem::path const& directory){
+        auto require=[&](wchar_t const* script,char const* why){if(web.evaluate(script)!=L"true")throw std::runtime_error(why);};
+        require(L"!!window.chrome.webview && document.fonts.check('12px Montserrat')","WebView2/Montserrat not loaded");
+        web.evaluate(L"document.getElementById('settingsButton').click()");
+        require(L"document.body.dataset.stage==='settings'","HTML Settings click failed");
+        web.evaluate(L"document.getElementById('en').click();document.getElementById('dark').click()");
+        require(L"document.body.dataset.stage==='settings' && document.documentElement.lang==='en' && document.documentElement.dataset.theme==='dark'","HTML language/theme controls failed");
+        web.evaluate(L"document.getElementById('path').value='C:\\\\Selected folder\\\\Screencast';document.getElementById('path').dispatchEvent(new Event('input'))");
+        wchar_t edited[32768]{};GetWindowTextW(pathEdit,edited,32768);
+        if(std::wstring(edited)!=L"C:\\Selected folder\\Screencast")throw std::runtime_error("HTML input did not update installation destination");
+        require(L"['path','browse','pathLabel'].every(id=>{const s=getComputedStyle(document.getElementById(id));return s.fontFamily==='Montserrat, sans-serif'&&s.fontSize==='12px'&&s.fontWeight==='400'&&s.transform==='none'&&s.zoom==='1'&&s.filter==='none'&&s.backdropFilter==='none'&&s.opacity==='1'})","HTML path/browse font or rendering properties differ");
+        web.evaluate(L"document.getElementById('ru').click();document.getElementById('light').click();document.getElementById('back').click()");
+        require(L"document.body.dataset.stage==='welcome'","HTML Back failed");
+        SetWindowTextW(pathEdit,L"C:\\Program Files\\Screencast");
+        auto metrics=L"JSON.stringify(['pathLabel','path','browse','accept','done','success'].map(id=>{const e=document.getElementById(id),s=getComputedStyle(e),r=e.getBoundingClientRect();return {id,rect:[r.x,r.y,r.width,r.height],css:['fontFamily','fontSize','fontWeight','lineHeight','letterSpacing','borderTopWidth','borderRadius','opacity','transform','zoom','filter','backdropFilter','willChange','color','backgroundColor'].map(k=>s[k])}}))";
+        for(auto page:{L"settings",L"finish"}){
+            stage=std::wstring(page)==L"settings"?1:3;syncWeb();
+            auto actual=web.evaluate(metrics);web.capture(directory/(std::wstring(L"connect-actual-")+page+L".png"));
+            web.reference(true);web.evaluate(std::wstring(L"lang='ru';light=true;installed=true;chromeReady=true;stage='")+page+L"';render()");
+            auto reference=web.evaluate(metrics);web.capture(directory/(std::wstring(L"connect-reference-")+page+L".png"));
+            if(actual!=reference)throw std::runtime_error("Live WebView2 computed CSS/geometry differs from CONNECT reference");
+            web.reference(false);syncWeb();
+        }
+        stage=0;syncWeb();
+        std::ofstream file(directory/L"installer-web.txt");file<<"PASS: live Edge WebView2 HTML controls, Montserrat loaded, actual settings/language/theme/back clicks, real input bridge, exact path/browse computed font/rendering properties.\n";
+    }
     void browse(std::filesystem::path const& initial={}) {
         ComPtr<IFileDialog> dialog;
         check(CoCreateInstance(CLSID_FileOpenDialog,nullptr,CLSCTX_INPROC_SERVER,IID_PPV_ARGS(&dialog)));
@@ -97,7 +143,7 @@ public:
         ComPtr<IShellItem> item;check(dialog->GetResult(&item));PWSTR name{};
         check(item->GetDisplayName(SIGDN_FILESYSPATH,&name));
         std::filesystem::path selected(name);CoTaskMemFree(name);
-        path=(selected/L"Screencast").wstring();SetWindowTextW(pathEdit,path.c_str());
+        path=(selected/L"Screencast").wstring();SetWindowTextW(pathEdit,path.c_str());syncWeb();
     }
     void folderTest(std::filesystem::path const& directory) {
         APTTYPE type{};APTTYPEQUALIFIER qualifier{};check(CoGetApartmentType(&type,&qualifier));
@@ -150,7 +196,7 @@ public:
                 if(startMenu) {auto group=std::filesystem::path(folder(FOLDERID_Programs))/L"Screencast";std::filesystem::create_directories(group);shortcut((group/L"Screencast.lnk").wstring(),app,icon,L"SanderStripa.Screencast");shortcut((group/L"Uninstall.lnk").wstring(),(destination/L"Screencast-Uninstall.exe").wstring(),icon,L"SanderStripa.Screencast.Uninstall");}
                 HKEY key{};check(HRESULT_FROM_WIN32(RegCreateKeyExW(HKEY_CURRENT_USER,L"Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Screencast",0,nullptr,0,KEY_SET_VALUE,nullptr,&key,nullptr)));
                 auto put=[&](wchar_t const* name,std::wstring const& value){RegSetValueExW(key,name,0,REG_SZ,reinterpret_cast<BYTE const*>(value.c_str()),DWORD((value.size()+1)*2));};
-                put(L"DisplayName",L"Screencast");put(L"DisplayVersion",L"0.4.0");put(L"InstallLocation",path);put(L"DisplayIcon",icon);put(L"UninstallString",L"\""+(destination/L"Screencast-Uninstall.exe").wstring()+L"\" --uninstall");RegCloseKey(key);
+                put(L"DisplayName",L"Screencast");put(L"DisplayVersion",L"0.4.1");put(L"InstallLocation",path);put(L"DisplayIcon",icon);put(L"UninstallString",L"\""+(destination/L"Screencast-Uninstall.exe").wstring()+L"\" --uninstall");RegCloseKey(key);
                 // Initialize only appearance preferences, after successful extraction/registration.
                 // The application reads these same values on its first and subsequent launches.
                 check(HRESULT_FROM_WIN32(RegCreateKeyExW(HKEY_CURRENT_USER,L"Software\\Screencast",0,nullptr,0,KEY_SET_VALUE,nullptr,&key,nullptr)));
@@ -177,6 +223,7 @@ LRESULT CALLBACK proc(HWND h,UINT m,WPARAM w,LPARAM l) {
     try {
         if(m==WM_CREATE){setup->window=h;setup->create();return 0;}
         if(m==WM_COMMAND){
+            if(HIWORD(w)==EN_CHANGE&&reinterpret_cast<HWND>(l)==setup->pathEdit){setup->syncWeb();return 0;}
             // BS_NOTIFY also sends focus notifications. Only clicks are commands.
             auto button=setup->buttons.find(LOWORD(w));
             if(HIWORD(w)==BN_CLICKED && button!=setup->buttons.end() &&
@@ -190,8 +237,9 @@ LRESULT CALLBACK proc(HWND h,UINT m,WPARAM w,LPARAM l) {
         if(m==WM_DPICHANGED){setup->dpi=HIWORD(w);setup->fonts();auto r=reinterpret_cast<RECT*>(l);SetWindowPos(h,nullptr,r->left,r->top,setup->px(installerVisual::width),setup->px(installerVisual::height),SWP_NOZORDER|SWP_NOACTIVATE);setup->rebuild();return 0;}
         if(m==WM_NCHITTEST){auto hit=DefWindowProcW(h,m,w,l);POINT point{GET_X_LPARAM(l),GET_Y_LPARAM(l)};ScreenToClient(h,&point);if(hit==HTCLIENT && point.y<setup->px(60))return HTCAPTION;return hit;}
         if(m==WM_ERASEBKGND)return 1;
+        if(m==WM_SIZE){setup->web.resize();return 0;}
         if(m==WM_CTLCOLOREDIT){SetTextColor(reinterpret_cast<HDC>(w),setup->fg());SetBkColor(reinterpret_cast<HDC>(w),setup->field());return reinterpret_cast<LRESULT>(setup->fieldBrush);}
-        if(m==WM_TIMER){if(w==2){KillTimer(h,2);setup->snapshot();DestroyWindow(h);return 0;}if(setup->stage==2)InvalidateRect(h,nullptr,FALSE);return 0;}
+        if(m==WM_TIMER){if(w==2){KillTimer(h,2);setup->snapshot();DestroyWindow(h);return 0;}if(setup->stage==2){InvalidateRect(h,nullptr,FALSE);setup->syncWeb();}return 0;}
         if(m==Completed){if(setup->worker.joinable())setup->worker.join();if(w)setup->stage=3;else {setup->stage=1;setup->notice(setup->error);}setup->rebuild();return 0;}
         if(m==WM_CLOSE){if(setup->stage!=2)DestroyWindow(h);return 0;}
         if(m==WM_DESTROY){PostQuitMessage(0);return 0;}
@@ -256,8 +304,9 @@ int WINAPI wWinMain(HINSTANCE instance,HINSTANCE,PWSTR,int show) {
         auto window=CreateWindowW(cls.lpszClassName,L"Screencast",WS_POPUP|WS_SYSMENU|WS_MINIMIZEBOX|WS_CLIPCHILDREN,CW_USEDEFAULT,CW_USEDEFAULT,installerVisual::width,installerVisual::height,nullptr,nullptr,instance,nullptr);
         if(!state.snapshotPath.empty() && (GetWindowLongPtrW(window,GWL_STYLE)&WS_CAPTION))throw std::runtime_error("System caption must be absent");
         RECT work{};SystemParametersInfoW(SPI_GETWORKAREA,0,&work,0);SetWindowPos(window,nullptr,work.left+(work.right-work.left-state.px(installerVisual::width))/2,work.top+(work.bottom-work.top-state.px(installerVisual::height))/2,0,0,SWP_NOSIZE|SWP_NOZORDER);
-        DWORD corners=2;DwmSetWindowAttribute(window,DWMWA_WINDOW_CORNER_PREFERENCE,&corners,sizeof(corners));ShowWindow(window,show);
-        if(parameters.size()>=3&&parameters[1]==L"--wizard-test"){state.folderTest(parameters[2]);state.uiTest(parameters[2]);}
+        DWORD corners=2;DwmSetWindowAttribute(window,DWMWA_WINDOW_CORNER_PREFERENCE,&corners,sizeof(corners));
+        state.openWeb();ShowWindow(window,show);
+        if(parameters.size()>=3&&parameters[1]==L"--wizard-test"){state.webTest(parameters[2]);state.folderTest(parameters[2]);state.uiTest(parameters[2]);}
         if(!state.snapshotPath.empty())SetTimer(window,2,200,nullptr);
         MSG message{};while(GetMessageW(&message,nullptr,0,0)>0){if(!IsDialogMessageW(window,&message)){TranslateMessage(&message);DispatchMessageW(&message);}}
         if(privateFont)RemoveFontMemResourceEx(privateFont);

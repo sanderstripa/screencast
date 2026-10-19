@@ -59,6 +59,6 @@ const {PNG}=require('pngjs');
  fs.writeFileSync(path.join(output,'assets.rc.in'),assets.map(a=>`${a.id} RCDATA "@CMAKE_CURRENT_SOURCE_DIR@/installer/generated/${a.file}"`).join('\n')+'\n');
  const sources={};for(const file of ['index.html','style.css','preview.js','assets/Montserrat.ttf','assets/ribbon.png'])sources[file]=crypto.createHash('sha256').update(file.match(/\.(html|css|js)$/)?fs.readFileSync(path.join(source,file),'utf8').replace(/\r\n/g,'\n'):fs.readFileSync(path.join(source,file))).digest('hex');
  for(const asset of assets)asset.sha256=crypto.createHash('sha256').update(fs.readFileSync(path.join(output,asset.file))).digest('hex');
- fs.writeFileSync(path.join(output,'manifest.json'),JSON.stringify({version:'0.4.0',sources,layout,assets},null,2)+'\n');
+ fs.writeFileSync(path.join(output,'manifest.json'),JSON.stringify({version:'0.4.1',sources,layout,assets},null,2)+'\n');
  console.log(`Generated ${assets.length} native installer resources at ${scales.join('/')} DPI.`);
 })().catch(e=>{console.error(e);process.exit(1)});

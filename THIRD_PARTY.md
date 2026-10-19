@@ -12,3 +12,5 @@ Implementation references:
 - https://github.com/PeterL1n/RobustVideoMatting/blob/master/documentation/inference.md
 
 - CONNECT window/appearance icons (Minus, X, Monitor, Sun, Moon, Palette): Lucide 0.468.0, the same version used by CONNECT VPN. Original SVG sources and their ISC/MIT license notices are in assets/connect-ui/. Native rendering is generated from the original SVG data; no icon library runtime is bundled.
+
+- Installer HTML rendering: Microsoft Edge WebView2 SDK 1.0.2903.40; SDK license in installer/WebView2-LICENSE.txt. Uses the installed Microsoft Edge WebView2 Runtime, as CONNECT VPN does.

@@ -3,3 +3,12 @@
 201 RCDATA "@SCREENCAST_PAYLOAD@"
 202 RCDATA "@CMAKE_CURRENT_SOURCE_DIR@/assets/Montserrat.ttf"
 #include "installer_visual_assets.rc"
+
+203 RCDATA "@CMAKE_CURRENT_SOURCE_DIR@/installer/visual-review/index.html"
+204 RCDATA "@CMAKE_CURRENT_SOURCE_DIR@/installer/visual-review/style.css"
+205 RCDATA "@CMAKE_CURRENT_SOURCE_DIR@/installer/visual-review/preview.js"
+206 RCDATA "@CMAKE_CURRENT_SOURCE_DIR@/installer/visual-review/assets/ribbon.png"
+
+208 RCDATA "@CMAKE_CURRENT_SOURCE_DIR@/installer/generated/connect-reference.html"
+209 RCDATA "@CMAKE_CURRENT_SOURCE_DIR@/installer/connect-reference/style.css"
+210 RCDATA "@CMAKE_CURRENT_SOURCE_DIR@/installer/connect-reference/setup.js"
