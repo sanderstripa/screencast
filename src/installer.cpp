@@ -82,6 +82,58 @@ void uninstallFiles(std::filesystem::path const& destination) {
 class Setup : public InstallerView {
 public:
     std::thread worker;
+    void browse(std::filesystem::path const& initial={}) {
+        ComPtr<IFileDialog> dialog;
+        check(CoCreateInstance(CLSID_FileOpenDialog,nullptr,CLSCTX_INPROC_SERVER,IID_PPV_ARGS(&dialog)));
+        DWORD options{};check(dialog->GetOptions(&options));
+        check(dialog->SetOptions(options|FOS_PICKFOLDERS|FOS_FORCEFILESYSTEM|FOS_PATHMUSTEXIST|FOS_NOCHANGEDIR));
+        if(!initial.empty()){
+            ComPtr<IShellItem> item;check(SHCreateItemFromParsingName(initial.c_str(),nullptr,IID_PPV_ARGS(&item)));
+            check(dialog->SetFolder(item.Get()));
+        }
+        auto result=dialog->Show(window);
+        if(result==HRESULT_FROM_WIN32(ERROR_CANCELLED))return;
+        check(result);
+        ComPtr<IShellItem> item;check(dialog->GetResult(&item));PWSTR name{};
+        check(item->GetDisplayName(SIGDN_FILESYSPATH,&name));
+        std::filesystem::path selected(name);CoTaskMemFree(name);
+        path=(selected/L"Screencast").wstring();SetWindowTextW(pathEdit,path.c_str());
+    }
+    void folderTest(std::filesystem::path const& directory) {
+        APTTYPE type{};APTTYPEQUALIFIER qualifier{};check(CoGetApartmentType(&type,&qualifier));
+        if(type!=APTTYPE_STA&&type!=APTTYPE_MAINSTA)throw std::runtime_error("Folder picker requires an STA UI thread");
+        auto selected=std::filesystem::absolute(directory/L"folder picker selection");std::filesystem::create_directories(selected);
+        command(3);
+        auto uiThread=GetCurrentThreadId();
+        for(bool cancel:{false,true,false}){
+            if(cancel){path=(directory/L"manually edited destination").wstring();SetWindowTextW(pathEdit,path.c_str());}
+            auto previous=path;std::atomic<bool> handled{};
+            std::jthread driver([&](std::stop_token stop){
+                struct Search{HWND owner,dialog;};
+                while(!stop.stop_requested()){
+                    Search found{window,nullptr};
+                    EnumThreadWindows(uiThread,[](HWND candidate,LPARAM context)->BOOL{
+                        auto& search=*reinterpret_cast<Search*>(context);wchar_t name[32]{};GetClassNameW(candidate,name,32);
+                        if(GetWindow(candidate,GW_OWNER)==search.owner&&std::wstring(name)==L"#32770"&&IsWindowVisible(candidate)){
+                            search.dialog=candidate;return FALSE;
+                        }return TRUE;
+                    },reinterpret_cast<LPARAM>(&found));
+                    if(found.dialog){
+                        Sleep(300);handled=true;
+                        PostMessageW(found.dialog,WM_COMMAND,cancel?IDCANCEL:IDOK,0);return;
+                    }
+                    Sleep(25);
+                }
+            });
+            browse(selected);driver.request_stop();driver.join();
+            if(!handled||stage!=1||!IsWindow(window)||!IsWindowEnabled(window))throw std::runtime_error("Folder picker did not return to settings");
+            auto expected=cancel?previous:(selected/L"Screencast").wstring();
+            wchar_t edited[32768]{};GetWindowTextW(pathEdit,edited,32768);
+            if(path!=expected||path!=edited)throw std::runtime_error("Folder picker selection/cancellation lost destination");
+        }
+        std::ofstream report(directory/L"installer-folder.txt");report<<"PASS: real Windows folder picker select, cancel, reopen; selected destination reaches native field; STA UI thread; settings and enabled owner preserved.\n";
+        command(3);
+    }
     void install() {
         std::wstring selected(32768,0);selected.resize(GetWindowTextW(pathEdit,selected.data(),int(selected.size())));auto destination=safeDestination(selected);path=destination.wstring();stage=2;progress=5;rebuild();
         const DWORD selectedTheme=dark?2:1,selectedEnglish=english?1:0;
@@ -95,7 +147,7 @@ public:
                 if(startMenu) {auto group=std::filesystem::path(folder(FOLDERID_Programs))/L"Screencast";std::filesystem::create_directories(group);shortcut((group/L"Screencast.lnk").wstring(),app,icon,L"SanderStripa.Screencast");shortcut((group/L"Uninstall.lnk").wstring(),(destination/L"Screencast-Uninstall.exe").wstring(),icon,L"SanderStripa.Screencast.Uninstall");}
                 HKEY key{};check(HRESULT_FROM_WIN32(RegCreateKeyExW(HKEY_CURRENT_USER,L"Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Screencast",0,nullptr,0,KEY_SET_VALUE,nullptr,&key,nullptr)));
                 auto put=[&](wchar_t const* name,std::wstring const& value){RegSetValueExW(key,name,0,REG_SZ,reinterpret_cast<BYTE const*>(value.c_str()),DWORD((value.size()+1)*2));};
-                put(L"DisplayName",L"Screencast");put(L"DisplayVersion",L"0.3.8");put(L"InstallLocation",path);put(L"DisplayIcon",icon);put(L"UninstallString",L"\""+(destination/L"Screencast-Uninstall.exe").wstring()+L"\" --uninstall");RegCloseKey(key);
+                put(L"DisplayName",L"Screencast");put(L"DisplayVersion",L"0.3.9");put(L"InstallLocation",path);put(L"DisplayIcon",icon);put(L"UninstallString",L"\""+(destination/L"Screencast-Uninstall.exe").wstring()+L"\" --uninstall");RegCloseKey(key);
                 // Initialize only appearance preferences, after successful extraction/registration.
                 // The application reads these same values on its first and subsequent launches.
                 check(HRESULT_FROM_WIN32(RegCreateKeyExW(HKEY_CURRENT_USER,L"Software\\Screencast",0,nullptr,0,KEY_SET_VALUE,nullptr,&key,nullptr)));
@@ -112,7 +164,7 @@ public:
         if(id==1||id==12){english=id==12;rebuild();return;}if(id==2||id==13){dark=id==13;theme();return;}
         if(id==3){if(stage==0)stage=1;else if(stage==1)stage=0;rebuild();return;}
         if(id>=5 && id<=7){if(id==5)desktop=!desktop;else if(id==6)startMenu=!startMenu;else launch=!launch;InvalidateRect(buttons[id],nullptr,TRUE);return;}
-        if(id==8){ComPtr<IFileDialog> dialog;check(CoCreateInstance(CLSID_FileOpenDialog,nullptr,CLSCTX_INPROC_SERVER,IID_PPV_ARGS(&dialog)));DWORD options{};dialog->GetOptions(&options);dialog->SetOptions(options|FOS_PICKFOLDERS);if(SUCCEEDED(dialog->Show(window))){ComPtr<IShellItem> item;check(dialog->GetResult(&item));PWSTR name{};check(item->GetDisplayName(SIGDN_FILESYSPATH,&name));path=(std::filesystem::path(name)/L"Screencast").wstring();CoTaskMemFree(name);SetWindowTextW(pathEdit,path.c_str());}return;}
+        if(id==8){browse();return;}
         if(id==4){if(stage==0||stage==1)install();else if(stage==3){if(launch)ShellExecuteW(window,L"open",(path+L"\\Screencast.exe").c_str(),nullptr,path.c_str(),SW_SHOWNORMAL);DestroyWindow(window);}}
     }
     ~Setup(){if(worker.joinable())worker.join();}
@@ -148,7 +200,9 @@ int WINAPI wWinMain(HINSTANCE instance,HINSTANCE,PWSTR,int show) {
     std::wstring diagnostics;
     ULONG_PTR graphics{};Gdiplus::GdiplusStartupInput input;Gdiplus::GdiplusStartup(&graphics,&input,nullptr);
     try {
-        winrt::init_apartment();int count{};auto args=CommandLineToArgvW(GetCommandLineW(),&count);std::vector<std::wstring> parameters;for(int i=0;i<count;++i)parameters.emplace_back(args[i]);
+        // Windows Shell dialogs require a single-threaded UI apartment.
+        // Extraction keeps its independent MTA worker.
+        winrt::init_apartment(winrt::apartment_type::single_threaded);int count{};auto args=CommandLineToArgvW(GetCommandLineW(),&count);std::vector<std::wstring> parameters;for(int i=0;i<count;++i)parameters.emplace_back(args[i]);
         if(parameters.size()>=3&&parameters[1]==L"--wizard-test"){std::filesystem::create_directories(parameters[2]);diagnostics=parameters[2]+L"\\installer-ui-error.txt";}
         if(count>=3 && std::wstring(args[1])==L"--install-test") {auto destination=safeDestination(args[2]);extract(destination);uninstallFiles(destination);LocalFree(args);return 0;}
         if(count>=4 && std::wstring(args[1])==L"--shortcut-test") {
@@ -200,7 +254,7 @@ int WINAPI wWinMain(HINSTANCE instance,HINSTANCE,PWSTR,int show) {
         if(!state.snapshotPath.empty() && (GetWindowLongPtrW(window,GWL_STYLE)&WS_CAPTION))throw std::runtime_error("System caption must be absent");
         RECT work{};SystemParametersInfoW(SPI_GETWORKAREA,0,&work,0);SetWindowPos(window,nullptr,work.left+(work.right-work.left-state.px(installerVisual::width))/2,work.top+(work.bottom-work.top-state.px(installerVisual::height))/2,0,0,SWP_NOSIZE|SWP_NOZORDER);
         DWORD corners=2;DwmSetWindowAttribute(window,DWMWA_WINDOW_CORNER_PREFERENCE,&corners,sizeof(corners));ShowWindow(window,show);
-        if(parameters.size()>=3&&parameters[1]==L"--wizard-test")state.uiTest(parameters[2]);
+        if(parameters.size()>=3&&parameters[1]==L"--wizard-test"){state.folderTest(parameters[2]);state.uiTest(parameters[2]);}
         if(!state.snapshotPath.empty())SetTimer(window,2,200,nullptr);
         MSG message{};while(GetMessageW(&message,nullptr,0,0)>0){if(!IsDialogMessageW(window,&message)){TranslateMessage(&message);DispatchMessageW(&message);}}
         if(privateFont)RemoveFontMemResourceEx(privateFont);

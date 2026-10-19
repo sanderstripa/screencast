@@ -1,5 +1,6 @@
-Screencast 0.3.8 for Windows 11 x64.
+Screencast 0.3.9 for Windows 11 x64.
 
-- Fix installation settings unexpectedly returning to the welcome screen when switching theme/language or moving focus to the desktop.
-- Apply the selected light/dark theme and Russian/English language to the installed application. These can still be changed in the application settings.
-- Preserve the approved installer visuals, installation options and recording functionality.
+- Fix the installation-folder picker freezing or closing the installer by initializing its Windows UI thread in the Shell-compatible STA apartment.
+- Handle folder-dialog cancellation separately from errors and accept filesystem folders only.
+- Verify real folder selection, cancellation and reopening, preserving the destination and installation settings.
+- Keep the approved installer visuals, theme/language transfer and application recording behavior unchanged.

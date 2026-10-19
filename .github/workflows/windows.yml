@@ -99,6 +99,7 @@ jobs:
           if (-not $process.WaitForExit(30000)) { $process.Kill(); throw 'Native installer UI test timed out' }
           if ($process.ExitCode -ne 0) { Get-Content build/smoke/installer-ui-error.txt -ErrorAction SilentlyContinue; throw 'Native installer UI behavior failed' }
           Get-Content build/smoke/installer-ui.txt
+          Get-Content build/smoke/installer-folder.txt
           foreach ($language in @('ru','en')) { foreach ($theme in @('light','dark')) { foreach ($page in 0..3) {
             $image = Join-Path $PWD "build/smoke/setup-$language-$theme-$page.png"
             $process = Start-Process dist/Screencast-Setup-x64.exe -ArgumentList "--snapshot-$language-$theme",$image,$page -WindowStyle Hidden -PassThru

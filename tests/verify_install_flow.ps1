@@ -44,7 +44,7 @@ foreach($attempt in 1..4){
   Click $script:flowWindow 5;Click $script:flowWindow 6;Click $script:flowWindow 4
   Wait-For {$button=[InstallFlow]::GetDlgItem($script:flowWindow,4);[InstallFlow]::Shown($button)-and[InstallFlow]::Text($button)-in @('Готово','Done')} 'Real installation did not finish'
   $registration=Get-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\Screencast'
-  if($registration.DisplayVersion-ne'0.3.8'-or$registration.InstallLocation-ne$target){throw "Installer registration/version/path mismatch: actual=$($registration.InstallLocation), expected=$target, version=$($registration.DisplayVersion)"}
+  if($registration.DisplayVersion-ne'0.3.9'-or$registration.InstallLocation-ne$target){throw "Installer registration/version/path mismatch: actual=$($registration.InstallLocation), expected=$target, version=$($registration.DisplayVersion)"}
   $preferences=Get-ItemProperty 'HKCU:\Software\Screencast'
   if($preferences.Theme-ne$theme-or$preferences.English-ne$english){throw 'Installer did not persist selected application appearance'}
   if($preferences.SaveFolder-ne(Join-Path $Directory 'preserved-recordings')){throw 'Installer overwrote unrelated application preferences'}
