@@ -129,7 +129,7 @@ public:
             if(!handled||stage!=1||!IsWindow(window)||!IsWindowEnabled(window))throw std::runtime_error("Folder picker did not return to settings");
             auto expected=cancel?previous:(selected/L"Screencast").wstring();
             wchar_t edited[32768]{};GetWindowTextW(pathEdit,edited,32768);
-            if(path!=expected||path!=edited)throw std::runtime_error("Folder picker selection/cancellation lost destination");
+            if(path!=expected||path!=edited)throw std::runtime_error("Folder picker selection/cancellation lost destination: expected="+winrt::to_string(expected)+", actual="+winrt::to_string(path)+", field="+winrt::to_string(edited));
         }
         std::ofstream report(directory/L"installer-folder.txt");report<<"PASS: real Windows folder picker select, cancel, reopen; selected destination reaches native field; STA UI thread; settings and enabled owner preserved.\n";
         command(3);
