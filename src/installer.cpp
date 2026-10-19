@@ -86,6 +86,7 @@ public:
     std::thread worker;
     InstallerWeb web;
     std::deque<std::wstring> webMessages;
+    std::filesystem::path pickerTestInitial;
     void syncWeb(){
         if(!web.initialized())return;
         wchar_t edited[32768]{};GetWindowTextW(pathEdit,edited,32768);
@@ -178,7 +179,10 @@ public:
                     Sleep(25);
                 }
             });
-            browse(selected);driver.request_stop();driver.join();
+            pickerTestInitial=selected;
+            web.evaluate(L"document.getElementById('browse').click()");
+            web.until([&]{return handled.load()&&IsWindowEnabled(window);});
+            pickerTestInitial.clear();driver.request_stop();driver.join();
             if(!handled||stage!=1||!IsWindow(window)||!IsWindowEnabled(window))throw std::runtime_error("Folder picker did not return to settings");
             auto expected=cancel?previous:(selected/L"Screencast").wstring();
             wchar_t edited[32768]{};GetWindowTextW(pathEdit,edited,32768);
@@ -220,7 +224,7 @@ public:
         if(id==1||id==12){english=id==12;rebuild();return;}if(id==2||id==13){dark=id==13;theme();return;}
         if(id==3){if(stage==0)stage=1;else if(stage==1)stage=0;rebuild();return;}
         if(id>=5 && id<=7){if(id==5)desktop=!desktop;else if(id==6)startMenu=!startMenu;else launch=!launch;InvalidateRect(buttons[id],nullptr,TRUE);return;}
-        if(id==8){browse();return;}
+        if(id==8){browse(pickerTestInitial);return;}
         if(id==4){if(stage==0||stage==1)install();else if(stage==3){if(launch)ShellExecuteW(window,L"open",(path+L"\\Screencast.exe").c_str(),nullptr,path.c_str(),SW_SHOWNORMAL);DestroyWindow(window);}}
     }
     ~Setup(){if(worker.joinable())worker.join();}

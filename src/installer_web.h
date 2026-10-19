@@ -25,6 +25,7 @@ class InstallerWeb {
         }
     }
 public:
+    template<class Predicate> void until(Predicate done){wait(done);}
     bool initialized()const{return ready;}
     static std::wstring jsString(std::wstring const& value){return quote(value);}
     void resize(){if(controller){RECT r{};GetClientRect(owner,&r);check(controller->put_Bounds(r));}}

@@ -14,6 +14,15 @@ for name,digest in manifest['sources'].items():
 for asset in manifest['assets']:
     assert hashlib.sha256((generated/asset['file']).read_bytes()).hexdigest()==asset['sha256'],f'Native presentation asset changed: {asset["file"]}'
 
+reference_source=repo/'installer/connect-reference'
+pin=json.loads((reference_source/'source.json').read_text())
+for name,digest in pin['files'].items():
+    data=(reference_source/name).read_bytes().replace(b'\r\n',b'\n')
+    assert hashlib.sha1(b'blob '+str(len(data)).encode()+b'\0'+data).hexdigest()==digest,f'Pinned CONNECT source differs: {name}'
+assert (repo/'installer/visual-review/style.css').read_text().startswith((reference_source/'style.css').read_text()),'CONNECT CSS must be reused unchanged'
+font=(repo/'installer/visual-review/assets/Montserrat.ttf').read_bytes()
+assert hashlib.sha1(b'blob '+str(len(font)).encode()+b'\0'+font).hexdigest()==pin['fontGitBlob'],'Montserrat differs from CONNECT'
+
 def bounds(language,page,control):
     return tuple((math.floor if i<2 else math.ceil)(v) for i,v in enumerate(manifest['layout'][f'{language}-{page}'][str(control)]))
 

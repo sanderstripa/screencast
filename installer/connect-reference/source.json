@@ -1,5 +1,10 @@
 {
   "repository": "sanderstripa/connect",
   "commit": "37210bf6dbe1ebcd85938fcb6465bb9b5ed5d184",
-  "fontGitBlob": "c97aca18592834d8706549c279cb8d5ac5d85f69"
+  "fontGitBlob": "c97aca18592834d8706549c279cb8d5ac5d85f69",
+  "files": {
+    "index.html": "4fb53ed9421926b26844a28138db4be1c5d8a968",
+    "style.css": "4f90f79c32289d4b7b53d0341cbe98a1bc92acc1",
+    "setup.js": "05eca2193a70fec6cdd526f7da814f9a42b3babc"
+  }
 }
