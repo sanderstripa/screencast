@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.24)
-project(Screencast VERSION 0.3.9 LANGUAGES CXX)
+project(Screencast VERSION 0.4.0 LANGUAGES CXX)
 if(NOT WIN32 OR NOT MSVC)
   message(FATAL_ERROR "Screencast requires Windows 11 and the MSVC Windows SDK toolchain")
 endif()
