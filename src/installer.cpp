@@ -327,7 +327,8 @@ int WINAPI wWinMain(HINSTANCE instance,HINSTANCE,PWSTR,int show) {
         if(!state.snapshotPath.empty() && (GetWindowLongPtrW(window,GWL_STYLE)&WS_CAPTION))throw std::runtime_error("System caption must be absent");
         RECT work{};SystemParametersInfoW(SPI_GETWORKAREA,0,&work,0);SetWindowPos(window,nullptr,work.left+(work.right-work.left-state.px(installerVisual::width))/2,work.top+(work.bottom-work.top-state.px(installerVisual::height))/2,0,0,SWP_NOSIZE|SWP_NOZORDER);
         DWORD corners=2;DwmSetWindowAttribute(window,DWMWA_WINDOW_CORNER_PREFERENCE,&corners,sizeof(corners));
-        state.openWeb();ShowWindow(window,show);
+        // WebView2's compositor must attach to a shown diagnostic surface before navigation.
+        ShowWindow(window,show);state.openWeb();
         if(parameters.size()>=3&&parameters[1]==L"--wizard-test"){state.webTest(parameters[2]);state.folderTest(parameters[2]);state.uiTest(parameters[2]);}
         if(!state.snapshotPath.empty())SetTimer(window,2,200,nullptr);
         MSG message{};while(GetMessageW(&message,nullptr,0,0)>0){if(!IsDialogMessageW(window,&message)){TranslateMessage(&message);DispatchMessageW(&message);}}
