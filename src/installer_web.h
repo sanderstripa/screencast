@@ -90,7 +90,7 @@ public:
     }
     void update(std::wstring const& state){if(ready)view->ExecuteScript((L"window.applyInstallerState("+state+L")").c_str(),nullptr);}
     void capture(std::filesystem::path const& path){
-        evaluate(L"void(document.body.offsetHeight)");Sleep(100);
+        evaluate(L"void(document.body.offsetHeight)");Sleep(200);
         ComPtr<IStream> stream;check(CreateStreamOnHGlobal(nullptr,TRUE,&stream));bool finished{};HRESULT result{};
         check(view->CapturePreview(COREWEBVIEW2_CAPTURE_PREVIEW_IMAGE_FORMAT_PNG,stream.Get(),Microsoft::WRL::Callback<ICoreWebView2CapturePreviewCompletedHandler>([&](HRESULT hr)->HRESULT{result=hr;finished=true;return S_OK;}).Get()));
         wait([&]{return finished;},"WebView2 CapturePreview");check(result);HGLOBAL memory{};check(GetHGlobalFromStream(stream.Get(),&memory));STATSTG stat{};check(stream->Stat(&stat,STATFLAG_NONAME));

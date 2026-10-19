@@ -130,8 +130,12 @@ public:
             auto suffix=std::wstring(locale?L"en-":L"ru-")+(color?L"dark-":L"light-")+page;
             stage=std::wstring(page)==L"settings"?1:3;syncWeb();
             auto actual=web.evaluate(metrics);web.capture(directory/(std::wstring(L"connect-actual-")+suffix+L".png"));
+            web.evaluate(L"['desktop','startMenu','launch'].forEach(id=>document.getElementById(id).checked=false)");
+            web.capture(directory/(std::wstring(L"connect-actual-")+suffix+L"-off.png"));
             web.reference(true);web.evaluate(std::wstring(L"lang='")+(english?L"en":L"ru")+L"';light="+(dark?L"false":L"true")+L";installed=true;chromeReady=true;stage='"+page+L"';render()");
             auto reference=web.evaluate(metrics);web.capture(directory/(std::wstring(L"connect-reference-")+suffix+L".png"));
+            web.evaluate(L"['desktop','startMenu','launch'].forEach(id=>document.getElementById(id).checked=false)");
+            web.capture(directory/(std::wstring(L"connect-reference-")+suffix+L"-off.png"));
             {std::ofstream audit(directory/(std::wstring(L"connect-metrics-")+suffix+L".json"));audit<<"{\"actual\":"<<winrt::to_string(actual)<<",\"reference\":"<<winrt::to_string(reference)<<"}";}
             if(actual!=reference)throw std::runtime_error("Live WebView2 computed CSS/geometry differs from CONNECT reference");
             web.reference(false);syncWeb();
