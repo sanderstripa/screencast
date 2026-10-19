@@ -1,3 +1,12 @@
+# Screencast 0.4.2
+
+- Единый установщик CONNECT Installer на Go/Wails; общий исходник хранится в `sanderstripa/connect/installer-core`.
+- Кнопка «Принять и установить» находится на том же уровне, что в VPN, в обеих темах и на обоих языках.
+- Сохранены установочные адаптеры, настройки и особенности продукта из проверенных пользователем локальных сборок.
+- Изменения интерфейса и функциональности самого приложения не вносились, кроме номера версии.
+
+Пользователь подтвердил установку всех пяти предыдущих локальных сборок. Автоматические проверки текущей сборки указаны в GitHub Actions; повторная ручная установка каждого финального SHA не заявляется.
+
 Screencast 0.4.1 for Windows 11 x64.
 
 - Match installation settings and completion positions to the pinned CONNECT VPN installer: lower Accept and install, align the final application title and Done button.

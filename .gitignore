@@ -5,3 +5,6 @@
 *.partial.mp4
 *.log
 .vs/
+
+/.connect-installer-source/
+/.tmp/
