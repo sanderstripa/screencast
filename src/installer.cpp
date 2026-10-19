@@ -310,6 +310,7 @@ int WINAPI wWinMain(HINSTANCE instance,HINSTANCE,PWSTR,int show) {
         auto fontResource=FindResourceW(instance,MAKEINTRESOURCEW(202),RT_RCDATA);DWORD size=SizeofResource(instance,fontResource);
         auto data=LockResource(LoadResource(instance,fontResource));DWORD fonts{};auto privateFont=AddFontMemResourceEx(data,size,nullptr,&fonts);
         Setup state;
+        if(parameters.size()>=3&&(parameters[1]==L"--wizard-test"||parameters[1].starts_with(L"--snapshot-")))show=SW_SHOWNOACTIVATE;
         if(parameters.size()>=3 && parameters[1].starts_with(L"--snapshot-")) {state.english=parameters[1].find(L"-en-")!=std::wstring::npos;state.dark=parameters[1].ends_with(L"-dark");state.snapshotPath=parameters[2];if(parameters.size()>=4)state.stage=std::stoi(parameters[3]);state.progress=65;if(parameters.size()>=5 && parameters[4]==L"off")state.desktop=state.startMenu=state.launch=false;}
         for(size_t i=4;i<parameters.size();++i)if(parameters[i].starts_with(L"dpi="))state.snapshotDpi=std::stoi(parameters[i].substr(4));
         setup=&state;WNDCLASSEXW cls{sizeof(cls)};cls.lpfnWndProc=proc;cls.hInstance=instance;cls.hCursor=LoadCursorW(nullptr,IDC_ARROW);cls.hIcon=LoadIconW(instance,MAKEINTRESOURCEW(101));cls.hIconSm=cls.hIcon;cls.lpszClassName=L"ScreencastSetup";RegisterClassExW(&cls);
@@ -317,7 +318,7 @@ int WINAPI wWinMain(HINSTANCE instance,HINSTANCE,PWSTR,int show) {
         if(!state.snapshotPath.empty() && (GetWindowLongPtrW(window,GWL_STYLE)&WS_CAPTION))throw std::runtime_error("System caption must be absent");
         RECT work{};SystemParametersInfoW(SPI_GETWORKAREA,0,&work,0);SetWindowPos(window,nullptr,work.left+(work.right-work.left-state.px(installerVisual::width))/2,work.top+(work.bottom-work.top-state.px(installerVisual::height))/2,0,0,SWP_NOSIZE|SWP_NOZORDER);
         DWORD corners=2;DwmSetWindowAttribute(window,DWMWA_WINDOW_CORNER_PREFERENCE,&corners,sizeof(corners));
-        state.openWeb();ShowWindow(window,show);
+        ShowWindow(window,show);state.openWeb();
         if(parameters.size()>=3&&parameters[1]==L"--wizard-test"){state.webTest(parameters[2]);state.folderTest(parameters[2]);state.uiTest(parameters[2]);}
         if(!state.snapshotPath.empty())SetTimer(window,2,200,nullptr);
         MSG message{};while(GetMessageW(&message,nullptr,0,0)>0){if(!IsDialogMessageW(window,&message)){TranslateMessage(&message);DispatchMessageW(&message);}}

@@ -14,10 +14,10 @@ class InstallerWeb {
             if(c<L' '){wchar_t escaped[7]{};swprintf_s(escaped,L"\\u%04x",unsigned(c));out+=escaped;}else out+=c;
         }return out+L"\"";
     }
-    template<class Predicate> static void wait(Predicate done){
+    template<class Predicate> static void wait(Predicate done,char const* operation="WebView2 installer operation"){
         auto until=GetTickCount64()+20000;
         while(!done()){
-            if(GetTickCount64()>until)throw std::runtime_error("WebView2 installer operation timed out");
+            if(GetTickCount64()>until)throw std::runtime_error(std::string(operation)+" timed out");
             MSG message{};while(PeekMessageW(&message,nullptr,0,0,PM_REMOVE)){
                 if(message.message==WM_QUIT)throw std::runtime_error("Installer closed while initializing its interface");
                 TranslateMessage(&message);DispatchMessageW(&message);
@@ -75,25 +75,25 @@ public:
                         view->Navigate(L"https://screencast.setup/");return S_OK;
                     }).Get());if(FAILED(hr))failure=hr;return S_OK;
             }).Get()));
-        wait([&]{return ready||FAILED(failure);});check(failure);
-        wait([&]{return evaluate(L"document.fonts.status==='loaded'")==L"true";});
+        wait([&]{return ready||FAILED(failure);},"WebView2 initialization/navigation");check(failure);
+        wait([&]{return evaluate(L"document.fonts.status==='loaded'")==L"true";},"WebView2 initial fonts");
     }
     std::wstring evaluate(std::wstring const& script){
         bool finished{};HRESULT result{};std::wstring response;
         check(view->ExecuteScript(script.c_str(),Microsoft::WRL::Callback<ICoreWebView2ExecuteScriptCompletedHandler>([&](HRESULT hr,LPCWSTR value)->HRESULT{result=hr;if(value)response=value;finished=true;return S_OK;}).Get()));
-        wait([&]{return finished;});check(result);return response;
+        wait([&]{return finished;},"WebView2 ExecuteScript");check(result);return response;
     }
     void reference(bool enabled){
         ready=false;failure=S_OK;check(view->Navigate(enabled?L"https://screencast.setup/reference/index.html":L"https://screencast.setup/"));
-        wait([&]{return ready||FAILED(failure);});check(failure);
-        wait([&]{return evaluate(L"document.fonts.status==='loaded'")==L"true";});
+        wait([&]{return ready||FAILED(failure);},"CONNECT reference navigation");check(failure);
+        wait([&]{return evaluate(L"document.fonts.status==='loaded'")==L"true";},"CONNECT reference fonts");
     }
     void update(std::wstring const& state){if(ready)view->ExecuteScript((L"window.applyInstallerState("+state+L")").c_str(),nullptr);}
     void capture(std::filesystem::path const& path){
         evaluate(L"void(document.body.offsetHeight)");Sleep(100);
         ComPtr<IStream> stream;check(CreateStreamOnHGlobal(nullptr,TRUE,&stream));bool finished{};HRESULT result{};
         check(view->CapturePreview(COREWEBVIEW2_CAPTURE_PREVIEW_IMAGE_FORMAT_PNG,stream.Get(),Microsoft::WRL::Callback<ICoreWebView2CapturePreviewCompletedHandler>([&](HRESULT hr)->HRESULT{result=hr;finished=true;return S_OK;}).Get()));
-        wait([&]{return finished;});check(result);HGLOBAL memory{};check(GetHGlobalFromStream(stream.Get(),&memory));STATSTG stat{};check(stream->Stat(&stat,STATFLAG_NONAME));
+        wait([&]{return finished;},"WebView2 CapturePreview");check(result);HGLOBAL memory{};check(GetHGlobalFromStream(stream.Get(),&memory));STATSTG stat{};check(stream->Stat(&stat,STATFLAG_NONAME));
         auto bytes=GlobalLock(memory);std::ofstream output(path,std::ios::binary);output.write(static_cast<char const*>(bytes),stat.cbSize.LowPart);GlobalUnlock(memory);if(!output)throw std::runtime_error("Could not write WebView2 screenshot");
     }
     ~InstallerWeb(){if(controller)controller->Close();}
