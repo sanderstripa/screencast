@@ -1,4 +1,13 @@
-# Screencast 0.3.7 installer — visual review only
+# Shared installer HTML and standalone preview
+
+The current HTML/CSS/script are shared with the production 0.4.1 WebView2 installer.
+When opened as a normal browser page they retain the standalone simulated
+installation preview described below. In the real installer, WebView2 messages
+connect the same controls to the native backend. Historical 0.3.7 approval images
+and original ribbon artwork remain archived here; current source provenance and
+exact CONNECT comparison checks are described in `../README.md`.
+
+## Original 0.3.7 review record
 
 This folder is a reviewable presentation prototype, not an executable installer.
 Open `index.html`. Its navigation, language/theme selectors and shortcut/launch
@@ -21,7 +30,7 @@ The cutout is a visual-review asset; it is not claimed to be pixel-identical to
 the source. Approval of its appearance is part of this review.
 
 **Approval received:** the user approved these screens and explicitly requested
-publication. This folder preserves the original review prototype. The production
+publication. The archived screenshots preserve the original review. The production
 native integration and its verification are described in `../README.md`.
 
 Screens: `?stage=welcome`, `settings`, `installing`, `finish`.

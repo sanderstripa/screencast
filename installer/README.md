@@ -1,28 +1,48 @@
-# Screencast installer presentation
+# Screencast 0.4.1 installer
 
-The user approved `visual-review/` and authorized publication of version 0.3.7.
-The release uses that approved Montserrat layout, palette and lavender ribbon.
+The production installer renders real HTML buttons, inputs, labels and switches
+using the installed Microsoft Edge WebView2 Runtime, as CONNECT VPN does. Its
+HTML, CSS, script, Montserrat font and approved lavender ribbon are embedded in
+the executable and served locally from resources; no remote interface is loaded.
+The SDK/loader version is 1.0.2903.40, pinned by SHA-256 in CMake.
 
-`render-native-assets.cjs` renders the approved HTML into embedded PNG coverage
-at 96/120/144/168/192/240/288/384 DPI, plus separate unchecked-switch regions.
-`generated/layout.h` maps real native controls onto the approved DOM positions.
-`src/installer_view.h` displays the coverage and wires actual Win32 buttons,
-an editable path, the native folder picker, theme/language choices and live worker
-progress to the existing installer. It does not require a browser or WebView at
-installation time. Chromium is used only to prepare versioned visual resources.
+`connect-reference/` contains unchanged CONNECT installer sources pinned to
+commit `37210bf6dbe1ebcd85938fcb6465bb9b5ed5d184`. The original stylesheet is reused
+unchanged. Screencast overrides only the requested vertical coordinates after
+removing extension-specific UI: Accept and install at y=387; final title at
+y=131.75 and Done at y=312.25 in the 840x540 logical viewport. The launch row
+retains the reference vertical level and centers naturally for its product name.
+The original font bytes and source-file Git hashes are verified.
 
-The extraction, destination validation, shortcut creation, installation worker,
-uninstall manifest, registration and uninstall implementation remain in
-`src/installer.cpp`. Only the registered display version changes to 0.3.7.
-Welcome/settings/back navigation follows the approved installer screens.
+`src/installer_web.h` hosts WebView2. `src/installer.cpp` keeps the existing native
+extraction, destination validation, shortcut registration, preference transfer,
+worker and uninstall implementation. Browser actions are posted to the native
+message loop before opening modal Shell UI or closing the window. The folder
+picker runs on the STA UI thread. Actual HTML input changes update the existing
+native installation destination before installation starts.
 
-`tests/verify_installer.py` checks resource/source hashes and actual native wizard
-pixels against the approved presentation, excluding the dynamic native path
-and live progress bar. `--wizard-test` checks real UI controls without installing.
-`tests/verify_install_flow.ps1` runs only on an isolated GitHub Actions runner and
-tests actual installation, same-version reinstall, installed-app checks and
-actual uninstall including the uninstaller's delayed self-removal.
+The Win32 adapter and generated PNG resources remain geometry/DPI fixtures for
+native backend diagnostics. They are not the visible production text renderer.
+Production and diagnostic screenshots come from the live WebView2 surface.
 
-To regenerate visual resources, use Node with `playwright` and `pngjs`, Chrome,
-and run `node installer/render-native-assets.cjs`. `CHROME_PATH` can override
-Chrome's location. The approved preview and original image remain archived.
+`--wizard-test` exercises real HTML settings/theme/language/back controls, text
+input, and the actual HTML Browse action through folder select/cancel/reopen.
+It also loads the pinned CONNECT sources in the same WebView2 instance and
+compares computed CSS/geometry and captured component pixels in RU/EN and both
+themes. Path label/input, Browse, primary buttons and on/off toggles must match
+with zero pixel tolerance. Only the product name in the centered reference launch
+label is substituted so its text width matches Screencast. No extension controls
+or guidance are shown in the production application.
+
+`tests/verify_installer.py` validates these screenshots, source/font/resource
+hashes, colors, content, version and switch changes. The old headless PNG text is
+not used as a typography oracle for the Windows WebView compositor.
+`tests/verify_install_flow.ps1` is restricted to the isolated CI runner and tests
+actual installation/reinstallation, all four appearance/language combinations,
+installed-application startup, unrelated preferences and uninstall/self-removal.
+
+For source-level CSS/geometry auditing run `node installer/verify-connect-parity.cjs`.
+For DPI geometry fixtures run `node installer/render-native-assets.cjs` with Node,
+Playwright, pngjs and Chrome. `CHROME_PATH` may override the Chrome executable.
+The originally approved 0.3.7 review screenshots and ribbon source remain archived
+under `visual-review/`; its HTML/CSS are now the shared 0.4.1 presentation source.
