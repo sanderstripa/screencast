@@ -124,16 +124,19 @@ public:
         web.evaluate(L"document.getElementById('ru').click();document.getElementById('light').click();document.getElementById('back').click()");
         require(L"document.body.dataset.stage==='welcome'","HTML Back failed");
         SetWindowTextW(pathEdit,L"C:\\Program Files\\Screencast");
-        auto metrics=L"JSON.stringify(['pathLabel','path','browse','accept','done','success'].map(id=>{const e=document.getElementById(id),s=getComputedStyle(e),r=e.getBoundingClientRect();return {id,rect:[r.x,r.y,r.width,r.height],css:['fontFamily','fontSize','fontWeight','lineHeight','letterSpacing','borderTopWidth','borderRadius','opacity','transform','zoom','filter','backdropFilter','willChange','color','backgroundColor'].map(k=>s[k])}}))";
-        for(auto page:{L"settings",L"finish"}){
+        auto metrics=L"JSON.stringify(['pathLabel','path','browse','accept','done','success','@html','@body','@.shell','@header','@main','@#finish h1'].map(id=>{const e=id[0]==='@'?document.querySelector(id.slice(1)):document.getElementById(id),s=getComputedStyle(e),r=e.getBoundingClientRect();return {id,rect:id==='@#finish h1'?[r.y,r.height]:[r.x,r.y,r.width,r.height],css:['fontFamily','fontSize','fontWeight','lineHeight','letterSpacing','borderTopWidth','borderRadius','opacity','transform','zoom','filter','backdropFilter','willChange','color','backgroundColor','overflow'].map(k=>s[k])}}))";
+        for(bool locale:{false,true})for(bool color:{false,true})for(auto page:{L"settings",L"finish"}){
+            english=locale;dark=color;
+            auto suffix=std::wstring(locale?L"en-":L"ru-")+(color?L"dark-":L"light-")+page;
             stage=std::wstring(page)==L"settings"?1:3;syncWeb();
-            auto actual=web.evaluate(metrics);web.capture(directory/(std::wstring(L"connect-actual-")+page+L".png"));
-            web.reference(true);web.evaluate(std::wstring(L"lang='ru';light=true;installed=true;chromeReady=true;stage='")+page+L"';render()");
-            auto reference=web.evaluate(metrics);web.capture(directory/(std::wstring(L"connect-reference-")+page+L".png"));
+            auto actual=web.evaluate(metrics);web.capture(directory/(std::wstring(L"connect-actual-")+suffix+L".png"));
+            web.reference(true);web.evaluate(std::wstring(L"lang='")+(english?L"en":L"ru")+L"';light="+(dark?L"false":L"true")+L";installed=true;chromeReady=true;stage='"+page+L"';render()");
+            auto reference=web.evaluate(metrics);web.capture(directory/(std::wstring(L"connect-reference-")+suffix+L".png"));
+            {std::ofstream audit(directory/(std::wstring(L"connect-metrics-")+suffix+L".json"));audit<<"{\"actual\":"<<winrt::to_string(actual)<<",\"reference\":"<<winrt::to_string(reference)<<"}";}
             if(actual!=reference)throw std::runtime_error("Live WebView2 computed CSS/geometry differs from CONNECT reference");
             web.reference(false);syncWeb();
         }
-        stage=0;syncWeb();
+        stage=0;english=false;dark=false;theme();syncWeb();
         std::ofstream file(directory/L"installer-web.txt");file<<"PASS: live Edge WebView2 HTML controls, Montserrat loaded, actual settings/language/theme/back clicks, real input bridge, exact path/browse computed font/rendering properties.\n";
     }
     void browse(std::filesystem::path const& initial={}) {

@@ -56,13 +56,15 @@ for theme,expected in [('light',(242,240,235)),('dark',(32,33,34))]:
             tile=np.asarray(Image.open(generated/f'off-96-0-{int(theme=="dark")}-{control}.png').convert('RGB'))
             assert np.max(abs(off[t:b,l:r].astype(int)-tile.astype(int)))<=2,'Unchecked switch differs from approved reference'
             assert np.count_nonzero(np.any(on[t:b,l:l+39]!=off[t:b,l:l+39],axis=2))>50,'Switch does not visibly change'
-for page,controls in ((1,(8,14,4)),(3,(4,))):
+for locale in ('ru','en'):
+ for theme in ('light','dark'):
+  for page,controls in ((1,(8,14,4)),(3,(4,))):
     name='settings' if page==1 else 'finish'
-    actual=np.asarray(Image.open(root/f'connect-actual-{name}.png').convert('RGB'))
-    reference=np.asarray(Image.open(root/f'connect-reference-{name}.png').convert('RGB'))
+    actual=np.asarray(Image.open(root/f'connect-actual-{locale}-{theme}-{name}.png').convert('RGB'))
+    reference=np.asarray(Image.open(root/f'connect-reference-{locale}-{theme}-{name}.png').convert('RGB'))
     for control in controls:
-        l,t,r,b=bounds(0,page,control)
-        assert np.array_equal(actual[t:b,l:r],reference[t:b,l:r]),f'Actual WebView2 {name}/{control} pixels differ from original CONNECT component'
+        l,t,r,b=bounds(int(locale=='en'),page,control)
+        assert np.array_equal(actual[t:b,l:r],reference[t:b,l:r]),f'Actual WebView2 {locale}/{theme}/{name}/{control} pixels differ from original CONNECT component'
     if page==1:
         assert np.array_equal(actual[162:177,45:795],reference[162:177,45:795]),'Installation-folder label pixels differ from CONNECT'
-print('PASS: live WebView2 installer matches CONNECT path label/input/browse/primary button pixels exactly; RU/EN light/dark screens, 0.4.1 footer, live progress/path/switches and all 224 reference resources verified.')
+print('PASS: live WebView2 installer matches CONNECT path label/input/browse/primary button pixels exactly in RU/EN light/dark; 0.4.1 footer, live progress/path/switches and all 224 reference resources verified.')

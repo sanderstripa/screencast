@@ -1,7 +1,7 @@
 const fs=require('fs'),path=require('path'),http=require('http'),assert=require('assert');
 const {chromium}=require('playwright');
 const root=__dirname;
-const properties=['fontFamily','fontSize','fontWeight','lineHeight','letterSpacing','borderTopWidth','borderRightWidth','borderBottomWidth','borderLeftWidth','borderRadius','paddingTop','paddingRight','paddingBottom','paddingLeft','opacity','transform','zoom','filter','backdropFilter','willChange','color','backgroundColor'];
+const properties=['fontFamily','fontSize','fontWeight','lineHeight','letterSpacing','borderTopWidth','borderRightWidth','borderBottomWidth','borderLeftWidth','borderRadius','paddingTop','paddingRight','paddingBottom','paddingLeft','opacity','transform','zoom','filter','backdropFilter','willChange','color','backgroundColor','overflow','position','boxSizing'];
 (async()=>{
  const server=http.createServer((req,res)=>{
   let route=new URL(req.url,'http://localhost').pathname;
@@ -25,7 +25,7 @@ const properties=['fontFamily','fontSize','fontWeight','lineHeight','letterSpaci
   report.push({locale,theme,stage,reference,actual});
   if(process.argv.includes('--measure'))continue;
   for(const id of stage==='settings'?['settingsTitle','languageLabel','pathLabel','path','browse','accept']:['done','success']){
-   assert.deepStrictEqual(actual[id].style,reference[id].style,`${locale}/${theme}/${stage}/${id}: computed CSS differs from CONNECT`);
+   assert.deepStrictEqual(Object.fromEntries(Object.entries(actual[id].style).filter(([k])=>k!=='position')),Object.fromEntries(Object.entries(reference[id].style).filter(([k])=>k!=='position')),`${locale}/${theme}/${stage}/${id}: computed CSS differs from CONNECT`);
    assert.strictEqual(actual[id].rect[1],reference[id].rect[1],`${id}: vertical position differs`);
    if(id!=='success')assert.deepStrictEqual(actual[id].rect.slice(2),reference[id].rect.slice(2),`${id}: control dimensions differ`);
   }

@@ -9,7 +9,6 @@ button,input,select,textarea,label,.tools{--wails-draggable:no-drag}
 input,textarea{user-select:text}
 
 /* Screencast-only content. Coordinates measured from the pinned CONNECT installer. */
-.shell{border-radius:10px;overflow:hidden;background:var(--bg)}
 #accept{position:absolute;left:0;top:320px;margin:0}
 #finish{position:relative}
 #finish h1{position:absolute;top:50.75px;margin:0}

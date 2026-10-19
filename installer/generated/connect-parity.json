@@ -33,7 +33,10 @@
           "backdropFilter": "none",
           "willChange": "auto",
           "color": "rgb(32, 38, 36)",
-          "backgroundColor": "rgba(0, 0, 0, 0)"
+          "backgroundColor": "rgba(0, 0, 0, 0)",
+          "overflow": "visible",
+          "position": "static",
+          "boxSizing": "border-box"
         }
       },
       "languageLabel": {
@@ -65,7 +68,10 @@
           "backdropFilter": "none",
           "willChange": "auto",
           "color": "rgb(32, 38, 36)",
-          "backgroundColor": "rgba(0, 0, 0, 0)"
+          "backgroundColor": "rgba(0, 0, 0, 0)",
+          "overflow": "visible",
+          "position": "static",
+          "boxSizing": "border-box"
         }
       },
       "pathLabel": {
@@ -97,7 +103,10 @@
           "backdropFilter": "none",
           "willChange": "auto",
           "color": "rgb(32, 38, 36)",
-          "backgroundColor": "rgba(0, 0, 0, 0)"
+          "backgroundColor": "rgba(0, 0, 0, 0)",
+          "overflow": "visible",
+          "position": "static",
+          "boxSizing": "border-box"
         }
       },
       "path": {
@@ -129,7 +138,10 @@
           "backdropFilter": "none",
           "willChange": "auto",
           "color": "rgb(32, 38, 36)",
-          "backgroundColor": "rgb(235, 233, 228)"
+          "backgroundColor": "rgb(235, 233, 228)",
+          "overflow": "clip",
+          "position": "static",
+          "boxSizing": "border-box"
         }
       },
       "browse": {
@@ -161,7 +173,10 @@
           "backdropFilter": "none",
           "willChange": "auto",
           "color": "rgb(32, 38, 36)",
-          "backgroundColor": "rgba(0, 0, 0, 0)"
+          "backgroundColor": "rgba(0, 0, 0, 0)",
+          "overflow": "visible",
+          "position": "static",
+          "boxSizing": "border-box"
         }
       },
       "accept": {
@@ -193,7 +208,10 @@
           "backdropFilter": "none",
           "willChange": "auto",
           "color": "rgb(255, 255, 255)",
-          "backgroundColor": "rgb(36, 42, 40)"
+          "backgroundColor": "rgb(36, 42, 40)",
+          "overflow": "visible",
+          "position": "static",
+          "boxSizing": "border-box"
         }
       },
       "done": {
@@ -225,7 +243,10 @@
           "backdropFilter": "none",
           "willChange": "auto",
           "color": "rgb(255, 255, 255)",
-          "backgroundColor": "rgb(36, 42, 40)"
+          "backgroundColor": "rgb(36, 42, 40)",
+          "overflow": "visible",
+          "position": "static",
+          "boxSizing": "border-box"
         }
       },
       "success": {
@@ -257,7 +278,10 @@
           "backdropFilter": "none",
           "willChange": "auto",
           "color": "rgb(32, 38, 36)",
-          "backgroundColor": "rgba(0, 0, 0, 0)"
+          "backgroundColor": "rgba(0, 0, 0, 0)",
+          "overflow": "visible",
+          "position": "static",
+          "boxSizing": "border-box"
         }
       },
       "title": {
@@ -299,7 +323,10 @@
           "backdropFilter": "none",
           "willChange": "auto",
           "color": "rgb(32, 38, 36)",
-          "backgroundColor": "rgba(0, 0, 0, 0)"
+          "backgroundColor": "rgba(0, 0, 0, 0)",
+          "overflow": "visible",
+          "position": "static",
+          "boxSizing": "border-box"
         }
       },
       "languageLabel": {
@@ -331,7 +358,10 @@
           "backdropFilter": "none",
           "willChange": "auto",
           "color": "rgb(32, 38, 36)",
-          "backgroundColor": "rgba(0, 0, 0, 0)"
+          "backgroundColor": "rgba(0, 0, 0, 0)",
+          "overflow": "visible",
+          "position": "static",
+          "boxSizing": "border-box"
         }
       },
       "pathLabel": {
@@ -363,7 +393,10 @@
           "backdropFilter": "none",
           "willChange": "auto",
           "color": "rgb(32, 38, 36)",
-          "backgroundColor": "rgba(0, 0, 0, 0)"
+          "backgroundColor": "rgba(0, 0, 0, 0)",
+          "overflow": "visible",
+          "position": "static",
+          "boxSizing": "border-box"
         }
       },
       "path": {
@@ -395,7 +428,10 @@
           "backdropFilter": "none",
           "willChange": "auto",
           "color": "rgb(32, 38, 36)",
-          "backgroundColor": "rgb(235, 233, 228)"
+          "backgroundColor": "rgb(235, 233, 228)",
+          "overflow": "clip",
+          "position": "static",
+          "boxSizing": "border-box"
         }
       },
       "browse": {
@@ -427,7 +463,10 @@
           "backdropFilter": "none",
           "willChange": "auto",
           "color": "rgb(32, 38, 36)",
-          "backgroundColor": "rgba(0, 0, 0, 0)"
+          "backgroundColor": "rgba(0, 0, 0, 0)",
+          "overflow": "visible",
+          "position": "static",
+          "boxSizing": "border-box"
         }
       },
       "accept": {
@@ -459,7 +498,10 @@
           "backdropFilter": "none",
           "willChange": "auto",
           "color": "rgb(255, 255, 255)",
-          "backgroundColor": "rgb(36, 42, 40)"
+          "backgroundColor": "rgb(36, 42, 40)",
+          "overflow": "visible",
+          "position": "absolute",
+          "boxSizing": "border-box"
         }
       },
       "done": {
@@ -491,7 +533,10 @@
           "backdropFilter": "none",
           "willChange": "auto",
           "color": "rgb(255, 255, 255)",
-          "backgroundColor": "rgb(36, 42, 40)"
+          "backgroundColor": "rgb(36, 42, 40)",
+          "overflow": "visible",
+          "position": "absolute",
+          "boxSizing": "border-box"
         }
       },
       "success": {
@@ -523,7 +568,10 @@
           "backdropFilter": "none",
           "willChange": "auto",
           "color": "rgb(32, 38, 36)",
-          "backgroundColor": "rgba(0, 0, 0, 0)"
+          "backgroundColor": "rgba(0, 0, 0, 0)",
+          "overflow": "visible",
+          "position": "absolute",
+          "boxSizing": "border-box"
         }
       },
       "title": {
@@ -570,7 +618,10 @@
           "backdropFilter": "none",
           "willChange": "auto",
           "color": "rgb(32, 38, 36)",
-          "backgroundColor": "rgba(0, 0, 0, 0)"
+          "backgroundColor": "rgba(0, 0, 0, 0)",
+          "overflow": "visible",
+          "position": "static",
+          "boxSizing": "border-box"
         }
       },
       "languageLabel": {
@@ -602,7 +653,10 @@
           "backdropFilter": "none",
           "willChange": "auto",
           "color": "rgb(32, 38, 36)",
-          "backgroundColor": "rgba(0, 0, 0, 0)"
+          "backgroundColor": "rgba(0, 0, 0, 0)",
+          "overflow": "visible",
+          "position": "static",
+          "boxSizing": "border-box"
         }
       },
       "pathLabel": {
@@ -634,7 +688,10 @@
           "backdropFilter": "none",
           "willChange": "auto",
           "color": "rgb(32, 38, 36)",
-          "backgroundColor": "rgba(0, 0, 0, 0)"
+          "backgroundColor": "rgba(0, 0, 0, 0)",
+          "overflow": "visible",
+          "position": "static",
+          "boxSizing": "border-box"
         }
       },
       "path": {
@@ -666,7 +723,10 @@
           "backdropFilter": "none",
           "willChange": "auto",
           "color": "rgb(32, 38, 36)",
-          "backgroundColor": "rgb(235, 233, 228)"
+          "backgroundColor": "rgb(235, 233, 228)",
+          "overflow": "clip",
+          "position": "static",
+          "boxSizing": "border-box"
         }
       },
       "browse": {
@@ -698,7 +758,10 @@
           "backdropFilter": "none",
           "willChange": "auto",
           "color": "rgb(32, 38, 36)",
-          "backgroundColor": "rgba(0, 0, 0, 0)"
+          "backgroundColor": "rgba(0, 0, 0, 0)",
+          "overflow": "visible",
+          "position": "static",
+          "boxSizing": "border-box"
         }
       },
       "accept": {
@@ -730,7 +793,10 @@
           "backdropFilter": "none",
           "willChange": "auto",
           "color": "rgb(255, 255, 255)",
-          "backgroundColor": "rgb(36, 42, 40)"
+          "backgroundColor": "rgb(36, 42, 40)",
+          "overflow": "visible",
+          "position": "static",
+          "boxSizing": "border-box"
         }
       },
       "done": {
@@ -762,7 +828,10 @@
           "backdropFilter": "none",
           "willChange": "auto",
           "color": "rgb(255, 255, 255)",
-          "backgroundColor": "rgb(36, 42, 40)"
+          "backgroundColor": "rgb(36, 42, 40)",
+          "overflow": "visible",
+          "position": "static",
+          "boxSizing": "border-box"
         }
       },
       "success": {
@@ -794,7 +863,10 @@
           "backdropFilter": "none",
           "willChange": "auto",
           "color": "rgb(32, 38, 36)",
-          "backgroundColor": "rgba(0, 0, 0, 0)"
+          "backgroundColor": "rgba(0, 0, 0, 0)",
+          "overflow": "visible",
+          "position": "static",
+          "boxSizing": "border-box"
         }
       },
       "title": {
@@ -836,7 +908,10 @@
           "backdropFilter": "none",
           "willChange": "auto",
           "color": "rgb(32, 38, 36)",
-          "backgroundColor": "rgba(0, 0, 0, 0)"
+          "backgroundColor": "rgba(0, 0, 0, 0)",
+          "overflow": "visible",
+          "position": "static",
+          "boxSizing": "border-box"
         }
       },
       "languageLabel": {
@@ -868,7 +943,10 @@
           "backdropFilter": "none",
           "willChange": "auto",
           "color": "rgb(32, 38, 36)",
-          "backgroundColor": "rgba(0, 0, 0, 0)"
+          "backgroundColor": "rgba(0, 0, 0, 0)",
+          "overflow": "visible",
+          "position": "static",
+          "boxSizing": "border-box"
         }
       },
       "pathLabel": {
@@ -900,7 +978,10 @@
           "backdropFilter": "none",
           "willChange": "auto",
           "color": "rgb(32, 38, 36)",
-          "backgroundColor": "rgba(0, 0, 0, 0)"
+          "backgroundColor": "rgba(0, 0, 0, 0)",
+          "overflow": "visible",
+          "position": "static",
+          "boxSizing": "border-box"
         }
       },
       "path": {
@@ -932,7 +1013,10 @@
           "backdropFilter": "none",
           "willChange": "auto",
           "color": "rgb(32, 38, 36)",
-          "backgroundColor": "rgb(235, 233, 228)"
+          "backgroundColor": "rgb(235, 233, 228)",
+          "overflow": "clip",
+          "position": "static",
+          "boxSizing": "border-box"
         }
       },
       "browse": {
@@ -964,7 +1048,10 @@
           "backdropFilter": "none",
           "willChange": "auto",
           "color": "rgb(32, 38, 36)",
-          "backgroundColor": "rgba(0, 0, 0, 0)"
+          "backgroundColor": "rgba(0, 0, 0, 0)",
+          "overflow": "visible",
+          "position": "static",
+          "boxSizing": "border-box"
         }
       },
       "accept": {
@@ -996,7 +1083,10 @@
           "backdropFilter": "none",
           "willChange": "auto",
           "color": "rgb(255, 255, 255)",
-          "backgroundColor": "rgb(36, 42, 40)"
+          "backgroundColor": "rgb(36, 42, 40)",
+          "overflow": "visible",
+          "position": "absolute",
+          "boxSizing": "border-box"
         }
       },
       "done": {
@@ -1028,7 +1118,10 @@
           "backdropFilter": "none",
           "willChange": "auto",
           "color": "rgb(255, 255, 255)",
-          "backgroundColor": "rgb(36, 42, 40)"
+          "backgroundColor": "rgb(36, 42, 40)",
+          "overflow": "visible",
+          "position": "absolute",
+          "boxSizing": "border-box"
         }
       },
       "success": {
@@ -1060,7 +1153,10 @@
           "backdropFilter": "none",
           "willChange": "auto",
           "color": "rgb(32, 38, 36)",
-          "backgroundColor": "rgba(0, 0, 0, 0)"
+          "backgroundColor": "rgba(0, 0, 0, 0)",
+          "overflow": "visible",
+          "position": "absolute",
+          "boxSizing": "border-box"
         }
       },
       "title": {
@@ -1107,7 +1203,10 @@
           "backdropFilter": "none",
           "willChange": "auto",
           "color": "rgb(237, 237, 233)",
-          "backgroundColor": "rgba(0, 0, 0, 0)"
+          "backgroundColor": "rgba(0, 0, 0, 0)",
+          "overflow": "visible",
+          "position": "static",
+          "boxSizing": "border-box"
         }
       },
       "languageLabel": {
@@ -1139,7 +1238,10 @@
           "backdropFilter": "none",
           "willChange": "auto",
           "color": "rgb(237, 237, 233)",
-          "backgroundColor": "rgba(0, 0, 0, 0)"
+          "backgroundColor": "rgba(0, 0, 0, 0)",
+          "overflow": "visible",
+          "position": "static",
+          "boxSizing": "border-box"
         }
       },
       "pathLabel": {
@@ -1171,7 +1273,10 @@
           "backdropFilter": "none",
           "willChange": "auto",
           "color": "rgb(237, 237, 233)",
-          "backgroundColor": "rgba(0, 0, 0, 0)"
+          "backgroundColor": "rgba(0, 0, 0, 0)",
+          "overflow": "visible",
+          "position": "static",
+          "boxSizing": "border-box"
         }
       },
       "path": {
@@ -1203,7 +1308,10 @@
           "backdropFilter": "none",
           "willChange": "auto",
           "color": "rgb(237, 237, 233)",
-          "backgroundColor": "rgb(41, 43, 44)"
+          "backgroundColor": "rgb(41, 43, 44)",
+          "overflow": "clip",
+          "position": "static",
+          "boxSizing": "border-box"
         }
       },
       "browse": {
@@ -1235,7 +1343,10 @@
           "backdropFilter": "none",
           "willChange": "auto",
           "color": "rgb(237, 237, 233)",
-          "backgroundColor": "rgba(0, 0, 0, 0)"
+          "backgroundColor": "rgba(0, 0, 0, 0)",
+          "overflow": "visible",
+          "position": "static",
+          "boxSizing": "border-box"
         }
       },
       "accept": {
@@ -1267,7 +1378,10 @@
           "backdropFilter": "none",
           "willChange": "auto",
           "color": "rgb(32, 33, 34)",
-          "backgroundColor": "rgb(227, 228, 223)"
+          "backgroundColor": "rgb(227, 228, 223)",
+          "overflow": "visible",
+          "position": "static",
+          "boxSizing": "border-box"
         }
       },
       "done": {
@@ -1299,7 +1413,10 @@
           "backdropFilter": "none",
           "willChange": "auto",
           "color": "rgb(32, 33, 34)",
-          "backgroundColor": "rgb(227, 228, 223)"
+          "backgroundColor": "rgb(227, 228, 223)",
+          "overflow": "visible",
+          "position": "static",
+          "boxSizing": "border-box"
         }
       },
       "success": {
@@ -1331,7 +1448,10 @@
           "backdropFilter": "none",
           "willChange": "auto",
           "color": "rgb(237, 237, 233)",
-          "backgroundColor": "rgba(0, 0, 0, 0)"
+          "backgroundColor": "rgba(0, 0, 0, 0)",
+          "overflow": "visible",
+          "position": "static",
+          "boxSizing": "border-box"
         }
       },
       "title": {
@@ -1373,7 +1493,10 @@
           "backdropFilter": "none",
           "willChange": "auto",
           "color": "rgb(237, 237, 233)",
-          "backgroundColor": "rgba(0, 0, 0, 0)"
+          "backgroundColor": "rgba(0, 0, 0, 0)",
+          "overflow": "visible",
+          "position": "static",
+          "boxSizing": "border-box"
         }
       },
       "languageLabel": {
@@ -1405,7 +1528,10 @@
           "backdropFilter": "none",
           "willChange": "auto",
           "color": "rgb(237, 237, 233)",
-          "backgroundColor": "rgba(0, 0, 0, 0)"
+          "backgroundColor": "rgba(0, 0, 0, 0)",
+          "overflow": "visible",
+          "position": "static",
+          "boxSizing": "border-box"
         }
       },
       "pathLabel": {
@@ -1437,7 +1563,10 @@
           "backdropFilter": "none",
           "willChange": "auto",
           "color": "rgb(237, 237, 233)",
-          "backgroundColor": "rgba(0, 0, 0, 0)"
+          "backgroundColor": "rgba(0, 0, 0, 0)",
+          "overflow": "visible",
+          "position": "static",
+          "boxSizing": "border-box"
         }
       },
       "path": {
@@ -1469,7 +1598,10 @@
           "backdropFilter": "none",
           "willChange": "auto",
           "color": "rgb(237, 237, 233)",
-          "backgroundColor": "rgb(41, 43, 44)"
+          "backgroundColor": "rgb(41, 43, 44)",
+          "overflow": "clip",
+          "position": "static",
+          "boxSizing": "border-box"
         }
       },
       "browse": {
@@ -1501,7 +1633,10 @@
           "backdropFilter": "none",
           "willChange": "auto",
           "color": "rgb(237, 237, 233)",
-          "backgroundColor": "rgba(0, 0, 0, 0)"
+          "backgroundColor": "rgba(0, 0, 0, 0)",
+          "overflow": "visible",
+          "position": "static",
+          "boxSizing": "border-box"
         }
       },
       "accept": {
@@ -1533,7 +1668,10 @@
           "backdropFilter": "none",
           "willChange": "auto",
           "color": "rgb(32, 33, 34)",
-          "backgroundColor": "rgb(227, 228, 223)"
+          "backgroundColor": "rgb(227, 228, 223)",
+          "overflow": "visible",
+          "position": "absolute",
+          "boxSizing": "border-box"
         }
       },
       "done": {
@@ -1565,7 +1703,10 @@
           "backdropFilter": "none",
           "willChange": "auto",
           "color": "rgb(32, 33, 34)",
-          "backgroundColor": "rgb(227, 228, 223)"
+          "backgroundColor": "rgb(227, 228, 223)",
+          "overflow": "visible",
+          "position": "absolute",
+          "boxSizing": "border-box"
         }
       },
       "success": {
@@ -1597,7 +1738,10 @@
           "backdropFilter": "none",
           "willChange": "auto",
           "color": "rgb(237, 237, 233)",
-          "backgroundColor": "rgba(0, 0, 0, 0)"
+          "backgroundColor": "rgba(0, 0, 0, 0)",
+          "overflow": "visible",
+          "position": "absolute",
+          "boxSizing": "border-box"
         }
       },
       "title": {
@@ -1644,7 +1788,10 @@
           "backdropFilter": "none",
           "willChange": "auto",
           "color": "rgb(237, 237, 233)",
-          "backgroundColor": "rgba(0, 0, 0, 0)"
+          "backgroundColor": "rgba(0, 0, 0, 0)",
+          "overflow": "visible",
+          "position": "static",
+          "boxSizing": "border-box"
         }
       },
       "languageLabel": {
@@ -1676,7 +1823,10 @@
           "backdropFilter": "none",
           "willChange": "auto",
           "color": "rgb(237, 237, 233)",
-          "backgroundColor": "rgba(0, 0, 0, 0)"
+          "backgroundColor": "rgba(0, 0, 0, 0)",
+          "overflow": "visible",
+          "position": "static",
+          "boxSizing": "border-box"
         }
       },
       "pathLabel": {
@@ -1708,7 +1858,10 @@
           "backdropFilter": "none",
           "willChange": "auto",
           "color": "rgb(237, 237, 233)",
-          "backgroundColor": "rgba(0, 0, 0, 0)"
+          "backgroundColor": "rgba(0, 0, 0, 0)",
+          "overflow": "visible",
+          "position": "static",
+          "boxSizing": "border-box"
         }
       },
       "path": {
@@ -1740,7 +1893,10 @@
           "backdropFilter": "none",
           "willChange": "auto",
           "color": "rgb(237, 237, 233)",
-          "backgroundColor": "rgb(41, 43, 44)"
+          "backgroundColor": "rgb(41, 43, 44)",
+          "overflow": "clip",
+          "position": "static",
+          "boxSizing": "border-box"
         }
       },
       "browse": {
@@ -1772,7 +1928,10 @@
           "backdropFilter": "none",
           "willChange": "auto",
           "color": "rgb(237, 237, 233)",
-          "backgroundColor": "rgba(0, 0, 0, 0)"
+          "backgroundColor": "rgba(0, 0, 0, 0)",
+          "overflow": "visible",
+          "position": "static",
+          "boxSizing": "border-box"
         }
       },
       "accept": {
@@ -1804,7 +1963,10 @@
           "backdropFilter": "none",
           "willChange": "auto",
           "color": "rgb(32, 33, 34)",
-          "backgroundColor": "rgb(227, 228, 223)"
+          "backgroundColor": "rgb(227, 228, 223)",
+          "overflow": "visible",
+          "position": "static",
+          "boxSizing": "border-box"
         }
       },
       "done": {
@@ -1836,7 +1998,10 @@
           "backdropFilter": "none",
           "willChange": "auto",
           "color": "rgb(32, 33, 34)",
-          "backgroundColor": "rgb(227, 228, 223)"
+          "backgroundColor": "rgb(227, 228, 223)",
+          "overflow": "visible",
+          "position": "static",
+          "boxSizing": "border-box"
         }
       },
       "success": {
@@ -1868,7 +2033,10 @@
           "backdropFilter": "none",
           "willChange": "auto",
           "color": "rgb(237, 237, 233)",
-          "backgroundColor": "rgba(0, 0, 0, 0)"
+          "backgroundColor": "rgba(0, 0, 0, 0)",
+          "overflow": "visible",
+          "position": "static",
+          "boxSizing": "border-box"
         }
       },
       "title": {
@@ -1910,7 +2078,10 @@
           "backdropFilter": "none",
           "willChange": "auto",
           "color": "rgb(237, 237, 233)",
-          "backgroundColor": "rgba(0, 0, 0, 0)"
+          "backgroundColor": "rgba(0, 0, 0, 0)",
+          "overflow": "visible",
+          "position": "static",
+          "boxSizing": "border-box"
         }
       },
       "languageLabel": {
@@ -1942,7 +2113,10 @@
           "backdropFilter": "none",
           "willChange": "auto",
           "color": "rgb(237, 237, 233)",
-          "backgroundColor": "rgba(0, 0, 0, 0)"
+          "backgroundColor": "rgba(0, 0, 0, 0)",
+          "overflow": "visible",
+          "position": "static",
+          "boxSizing": "border-box"
         }
       },
       "pathLabel": {
@@ -1974,7 +2148,10 @@
           "backdropFilter": "none",
           "willChange": "auto",
           "color": "rgb(237, 237, 233)",
-          "backgroundColor": "rgba(0, 0, 0, 0)"
+          "backgroundColor": "rgba(0, 0, 0, 0)",
+          "overflow": "visible",
+          "position": "static",
+          "boxSizing": "border-box"
         }
       },
       "path": {
@@ -2006,7 +2183,10 @@
           "backdropFilter": "none",
           "willChange": "auto",
           "color": "rgb(237, 237, 233)",
-          "backgroundColor": "rgb(41, 43, 44)"
+          "backgroundColor": "rgb(41, 43, 44)",
+          "overflow": "clip",
+          "position": "static",
+          "boxSizing": "border-box"
         }
       },
       "browse": {
@@ -2038,7 +2218,10 @@
           "backdropFilter": "none",
           "willChange": "auto",
           "color": "rgb(237, 237, 233)",
-          "backgroundColor": "rgba(0, 0, 0, 0)"
+          "backgroundColor": "rgba(0, 0, 0, 0)",
+          "overflow": "visible",
+          "position": "static",
+          "boxSizing": "border-box"
         }
       },
       "accept": {
@@ -2070,7 +2253,10 @@
           "backdropFilter": "none",
           "willChange": "auto",
           "color": "rgb(32, 33, 34)",
-          "backgroundColor": "rgb(227, 228, 223)"
+          "backgroundColor": "rgb(227, 228, 223)",
+          "overflow": "visible",
+          "position": "absolute",
+          "boxSizing": "border-box"
         }
       },
       "done": {
@@ -2102,7 +2288,10 @@
           "backdropFilter": "none",
           "willChange": "auto",
           "color": "rgb(32, 33, 34)",
-          "backgroundColor": "rgb(227, 228, 223)"
+          "backgroundColor": "rgb(227, 228, 223)",
+          "overflow": "visible",
+          "position": "absolute",
+          "boxSizing": "border-box"
         }
       },
       "success": {
@@ -2134,7 +2323,10 @@
           "backdropFilter": "none",
           "willChange": "auto",
           "color": "rgb(237, 237, 233)",
-          "backgroundColor": "rgba(0, 0, 0, 0)"
+          "backgroundColor": "rgba(0, 0, 0, 0)",
+          "overflow": "visible",
+          "position": "absolute",
+          "boxSizing": "border-box"
         }
       },
       "title": {
@@ -2181,7 +2373,10 @@
           "backdropFilter": "none",
           "willChange": "auto",
           "color": "rgb(32, 38, 36)",
-          "backgroundColor": "rgba(0, 0, 0, 0)"
+          "backgroundColor": "rgba(0, 0, 0, 0)",
+          "overflow": "visible",
+          "position": "static",
+          "boxSizing": "border-box"
         }
       },
       "languageLabel": {
@@ -2213,7 +2408,10 @@
           "backdropFilter": "none",
           "willChange": "auto",
           "color": "rgb(32, 38, 36)",
-          "backgroundColor": "rgba(0, 0, 0, 0)"
+          "backgroundColor": "rgba(0, 0, 0, 0)",
+          "overflow": "visible",
+          "position": "static",
+          "boxSizing": "border-box"
         }
       },
       "pathLabel": {
@@ -2245,7 +2443,10 @@
           "backdropFilter": "none",
           "willChange": "auto",
           "color": "rgb(32, 38, 36)",
-          "backgroundColor": "rgba(0, 0, 0, 0)"
+          "backgroundColor": "rgba(0, 0, 0, 0)",
+          "overflow": "visible",
+          "position": "static",
+          "boxSizing": "border-box"
         }
       },
       "path": {
@@ -2277,7 +2478,10 @@
           "backdropFilter": "none",
           "willChange": "auto",
           "color": "rgb(32, 38, 36)",
-          "backgroundColor": "rgb(235, 233, 228)"
+          "backgroundColor": "rgb(235, 233, 228)",
+          "overflow": "clip",
+          "position": "static",
+          "boxSizing": "border-box"
         }
       },
       "browse": {
@@ -2309,7 +2513,10 @@
           "backdropFilter": "none",
           "willChange": "auto",
           "color": "rgb(32, 38, 36)",
-          "backgroundColor": "rgba(0, 0, 0, 0)"
+          "backgroundColor": "rgba(0, 0, 0, 0)",
+          "overflow": "visible",
+          "position": "static",
+          "boxSizing": "border-box"
         }
       },
       "accept": {
@@ -2341,7 +2548,10 @@
           "backdropFilter": "none",
           "willChange": "auto",
           "color": "rgb(255, 255, 255)",
-          "backgroundColor": "rgb(36, 42, 40)"
+          "backgroundColor": "rgb(36, 42, 40)",
+          "overflow": "visible",
+          "position": "static",
+          "boxSizing": "border-box"
         }
       },
       "done": {
@@ -2373,7 +2583,10 @@
           "backdropFilter": "none",
           "willChange": "auto",
           "color": "rgb(255, 255, 255)",
-          "backgroundColor": "rgb(36, 42, 40)"
+          "backgroundColor": "rgb(36, 42, 40)",
+          "overflow": "visible",
+          "position": "static",
+          "boxSizing": "border-box"
         }
       },
       "success": {
@@ -2405,7 +2618,10 @@
           "backdropFilter": "none",
           "willChange": "auto",
           "color": "rgb(32, 38, 36)",
-          "backgroundColor": "rgba(0, 0, 0, 0)"
+          "backgroundColor": "rgba(0, 0, 0, 0)",
+          "overflow": "visible",
+          "position": "static",
+          "boxSizing": "border-box"
         }
       },
       "title": {
@@ -2447,7 +2663,10 @@
           "backdropFilter": "none",
           "willChange": "auto",
           "color": "rgb(32, 38, 36)",
-          "backgroundColor": "rgba(0, 0, 0, 0)"
+          "backgroundColor": "rgba(0, 0, 0, 0)",
+          "overflow": "visible",
+          "position": "static",
+          "boxSizing": "border-box"
         }
       },
       "languageLabel": {
@@ -2479,7 +2698,10 @@
           "backdropFilter": "none",
           "willChange": "auto",
           "color": "rgb(32, 38, 36)",
-          "backgroundColor": "rgba(0, 0, 0, 0)"
+          "backgroundColor": "rgba(0, 0, 0, 0)",
+          "overflow": "visible",
+          "position": "static",
+          "boxSizing": "border-box"
         }
       },
       "pathLabel": {
@@ -2511,7 +2733,10 @@
           "backdropFilter": "none",
           "willChange": "auto",
           "color": "rgb(32, 38, 36)",
-          "backgroundColor": "rgba(0, 0, 0, 0)"
+          "backgroundColor": "rgba(0, 0, 0, 0)",
+          "overflow": "visible",
+          "position": "static",
+          "boxSizing": "border-box"
         }
       },
       "path": {
@@ -2543,7 +2768,10 @@
           "backdropFilter": "none",
           "willChange": "auto",
           "color": "rgb(32, 38, 36)",
-          "backgroundColor": "rgb(235, 233, 228)"
+          "backgroundColor": "rgb(235, 233, 228)",
+          "overflow": "clip",
+          "position": "static",
+          "boxSizing": "border-box"
         }
       },
       "browse": {
@@ -2575,7 +2803,10 @@
           "backdropFilter": "none",
           "willChange": "auto",
           "color": "rgb(32, 38, 36)",
-          "backgroundColor": "rgba(0, 0, 0, 0)"
+          "backgroundColor": "rgba(0, 0, 0, 0)",
+          "overflow": "visible",
+          "position": "static",
+          "boxSizing": "border-box"
         }
       },
       "accept": {
@@ -2607,7 +2838,10 @@
           "backdropFilter": "none",
           "willChange": "auto",
           "color": "rgb(255, 255, 255)",
-          "backgroundColor": "rgb(36, 42, 40)"
+          "backgroundColor": "rgb(36, 42, 40)",
+          "overflow": "visible",
+          "position": "absolute",
+          "boxSizing": "border-box"
         }
       },
       "done": {
@@ -2639,7 +2873,10 @@
           "backdropFilter": "none",
           "willChange": "auto",
           "color": "rgb(255, 255, 255)",
-          "backgroundColor": "rgb(36, 42, 40)"
+          "backgroundColor": "rgb(36, 42, 40)",
+          "overflow": "visible",
+          "position": "absolute",
+          "boxSizing": "border-box"
         }
       },
       "success": {
@@ -2671,7 +2908,10 @@
           "backdropFilter": "none",
           "willChange": "auto",
           "color": "rgb(32, 38, 36)",
-          "backgroundColor": "rgba(0, 0, 0, 0)"
+          "backgroundColor": "rgba(0, 0, 0, 0)",
+          "overflow": "visible",
+          "position": "absolute",
+          "boxSizing": "border-box"
         }
       },
       "title": {
@@ -2718,7 +2958,10 @@
           "backdropFilter": "none",
           "willChange": "auto",
           "color": "rgb(32, 38, 36)",
-          "backgroundColor": "rgba(0, 0, 0, 0)"
+          "backgroundColor": "rgba(0, 0, 0, 0)",
+          "overflow": "visible",
+          "position": "static",
+          "boxSizing": "border-box"
         }
       },
       "languageLabel": {
@@ -2750,7 +2993,10 @@
           "backdropFilter": "none",
           "willChange": "auto",
           "color": "rgb(32, 38, 36)",
-          "backgroundColor": "rgba(0, 0, 0, 0)"
+          "backgroundColor": "rgba(0, 0, 0, 0)",
+          "overflow": "visible",
+          "position": "static",
+          "boxSizing": "border-box"
         }
       },
       "pathLabel": {
@@ -2782,7 +3028,10 @@
           "backdropFilter": "none",
           "willChange": "auto",
           "color": "rgb(32, 38, 36)",
-          "backgroundColor": "rgba(0, 0, 0, 0)"
+          "backgroundColor": "rgba(0, 0, 0, 0)",
+          "overflow": "visible",
+          "position": "static",
+          "boxSizing": "border-box"
         }
       },
       "path": {
@@ -2814,7 +3063,10 @@
           "backdropFilter": "none",
           "willChange": "auto",
           "color": "rgb(32, 38, 36)",
-          "backgroundColor": "rgb(235, 233, 228)"
+          "backgroundColor": "rgb(235, 233, 228)",
+          "overflow": "clip",
+          "position": "static",
+          "boxSizing": "border-box"
         }
       },
       "browse": {
@@ -2846,7 +3098,10 @@
           "backdropFilter": "none",
           "willChange": "auto",
           "color": "rgb(32, 38, 36)",
-          "backgroundColor": "rgba(0, 0, 0, 0)"
+          "backgroundColor": "rgba(0, 0, 0, 0)",
+          "overflow": "visible",
+          "position": "static",
+          "boxSizing": "border-box"
         }
       },
       "accept": {
@@ -2878,7 +3133,10 @@
           "backdropFilter": "none",
           "willChange": "auto",
           "color": "rgb(255, 255, 255)",
-          "backgroundColor": "rgb(36, 42, 40)"
+          "backgroundColor": "rgb(36, 42, 40)",
+          "overflow": "visible",
+          "position": "static",
+          "boxSizing": "border-box"
         }
       },
       "done": {
@@ -2910,7 +3168,10 @@
           "backdropFilter": "none",
           "willChange": "auto",
           "color": "rgb(255, 255, 255)",
-          "backgroundColor": "rgb(36, 42, 40)"
+          "backgroundColor": "rgb(36, 42, 40)",
+          "overflow": "visible",
+          "position": "static",
+          "boxSizing": "border-box"
         }
       },
       "success": {
@@ -2942,7 +3203,10 @@
           "backdropFilter": "none",
           "willChange": "auto",
           "color": "rgb(32, 38, 36)",
-          "backgroundColor": "rgba(0, 0, 0, 0)"
+          "backgroundColor": "rgba(0, 0, 0, 0)",
+          "overflow": "visible",
+          "position": "static",
+          "boxSizing": "border-box"
         }
       },
       "title": {
@@ -2984,7 +3248,10 @@
           "backdropFilter": "none",
           "willChange": "auto",
           "color": "rgb(32, 38, 36)",
-          "backgroundColor": "rgba(0, 0, 0, 0)"
+          "backgroundColor": "rgba(0, 0, 0, 0)",
+          "overflow": "visible",
+          "position": "static",
+          "boxSizing": "border-box"
         }
       },
       "languageLabel": {
@@ -3016,7 +3283,10 @@
           "backdropFilter": "none",
           "willChange": "auto",
           "color": "rgb(32, 38, 36)",
-          "backgroundColor": "rgba(0, 0, 0, 0)"
+          "backgroundColor": "rgba(0, 0, 0, 0)",
+          "overflow": "visible",
+          "position": "static",
+          "boxSizing": "border-box"
         }
       },
       "pathLabel": {
@@ -3048,7 +3318,10 @@
           "backdropFilter": "none",
           "willChange": "auto",
           "color": "rgb(32, 38, 36)",
-          "backgroundColor": "rgba(0, 0, 0, 0)"
+          "backgroundColor": "rgba(0, 0, 0, 0)",
+          "overflow": "visible",
+          "position": "static",
+          "boxSizing": "border-box"
         }
       },
       "path": {
@@ -3080,7 +3353,10 @@
           "backdropFilter": "none",
           "willChange": "auto",
           "color": "rgb(32, 38, 36)",
-          "backgroundColor": "rgb(235, 233, 228)"
+          "backgroundColor": "rgb(235, 233, 228)",
+          "overflow": "clip",
+          "position": "static",
+          "boxSizing": "border-box"
         }
       },
       "browse": {
@@ -3112,7 +3388,10 @@
           "backdropFilter": "none",
           "willChange": "auto",
           "color": "rgb(32, 38, 36)",
-          "backgroundColor": "rgba(0, 0, 0, 0)"
+          "backgroundColor": "rgba(0, 0, 0, 0)",
+          "overflow": "visible",
+          "position": "static",
+          "boxSizing": "border-box"
         }
       },
       "accept": {
@@ -3144,7 +3423,10 @@
           "backdropFilter": "none",
           "willChange": "auto",
           "color": "rgb(255, 255, 255)",
-          "backgroundColor": "rgb(36, 42, 40)"
+          "backgroundColor": "rgb(36, 42, 40)",
+          "overflow": "visible",
+          "position": "absolute",
+          "boxSizing": "border-box"
         }
       },
       "done": {
@@ -3176,7 +3458,10 @@
           "backdropFilter": "none",
           "willChange": "auto",
           "color": "rgb(255, 255, 255)",
-          "backgroundColor": "rgb(36, 42, 40)"
+          "backgroundColor": "rgb(36, 42, 40)",
+          "overflow": "visible",
+          "position": "absolute",
+          "boxSizing": "border-box"
         }
       },
       "success": {
@@ -3208,7 +3493,10 @@
           "backdropFilter": "none",
           "willChange": "auto",
           "color": "rgb(32, 38, 36)",
-          "backgroundColor": "rgba(0, 0, 0, 0)"
+          "backgroundColor": "rgba(0, 0, 0, 0)",
+          "overflow": "visible",
+          "position": "absolute",
+          "boxSizing": "border-box"
         }
       },
       "title": {
@@ -3255,7 +3543,10 @@
           "backdropFilter": "none",
           "willChange": "auto",
           "color": "rgb(237, 237, 233)",
-          "backgroundColor": "rgba(0, 0, 0, 0)"
+          "backgroundColor": "rgba(0, 0, 0, 0)",
+          "overflow": "visible",
+          "position": "static",
+          "boxSizing": "border-box"
         }
       },
       "languageLabel": {
@@ -3287,7 +3578,10 @@
           "backdropFilter": "none",
           "willChange": "auto",
           "color": "rgb(237, 237, 233)",
-          "backgroundColor": "rgba(0, 0, 0, 0)"
+          "backgroundColor": "rgba(0, 0, 0, 0)",
+          "overflow": "visible",
+          "position": "static",
+          "boxSizing": "border-box"
         }
       },
       "pathLabel": {
@@ -3319,7 +3613,10 @@
           "backdropFilter": "none",
           "willChange": "auto",
           "color": "rgb(237, 237, 233)",
-          "backgroundColor": "rgba(0, 0, 0, 0)"
+          "backgroundColor": "rgba(0, 0, 0, 0)",
+          "overflow": "visible",
+          "position": "static",
+          "boxSizing": "border-box"
         }
       },
       "path": {
@@ -3351,7 +3648,10 @@
           "backdropFilter": "none",
           "willChange": "auto",
           "color": "rgb(237, 237, 233)",
-          "backgroundColor": "rgb(41, 43, 44)"
+          "backgroundColor": "rgb(41, 43, 44)",
+          "overflow": "clip",
+          "position": "static",
+          "boxSizing": "border-box"
         }
       },
       "browse": {
@@ -3383,7 +3683,10 @@
           "backdropFilter": "none",
           "willChange": "auto",
           "color": "rgb(237, 237, 233)",
-          "backgroundColor": "rgba(0, 0, 0, 0)"
+          "backgroundColor": "rgba(0, 0, 0, 0)",
+          "overflow": "visible",
+          "position": "static",
+          "boxSizing": "border-box"
         }
       },
       "accept": {
@@ -3415,7 +3718,10 @@
           "backdropFilter": "none",
           "willChange": "auto",
           "color": "rgb(32, 33, 34)",
-          "backgroundColor": "rgb(227, 228, 223)"
+          "backgroundColor": "rgb(227, 228, 223)",
+          "overflow": "visible",
+          "position": "static",
+          "boxSizing": "border-box"
         }
       },
       "done": {
@@ -3447,7 +3753,10 @@
           "backdropFilter": "none",
           "willChange": "auto",
           "color": "rgb(32, 33, 34)",
-          "backgroundColor": "rgb(227, 228, 223)"
+          "backgroundColor": "rgb(227, 228, 223)",
+          "overflow": "visible",
+          "position": "static",
+          "boxSizing": "border-box"
         }
       },
       "success": {
@@ -3479,7 +3788,10 @@
           "backdropFilter": "none",
           "willChange": "auto",
           "color": "rgb(237, 237, 233)",
-          "backgroundColor": "rgba(0, 0, 0, 0)"
+          "backgroundColor": "rgba(0, 0, 0, 0)",
+          "overflow": "visible",
+          "position": "static",
+          "boxSizing": "border-box"
         }
       },
       "title": {
@@ -3521,7 +3833,10 @@
           "backdropFilter": "none",
           "willChange": "auto",
           "color": "rgb(237, 237, 233)",
-          "backgroundColor": "rgba(0, 0, 0, 0)"
+          "backgroundColor": "rgba(0, 0, 0, 0)",
+          "overflow": "visible",
+          "position": "static",
+          "boxSizing": "border-box"
         }
       },
       "languageLabel": {
@@ -3553,7 +3868,10 @@
           "backdropFilter": "none",
           "willChange": "auto",
           "color": "rgb(237, 237, 233)",
-          "backgroundColor": "rgba(0, 0, 0, 0)"
+          "backgroundColor": "rgba(0, 0, 0, 0)",
+          "overflow": "visible",
+          "position": "static",
+          "boxSizing": "border-box"
         }
       },
       "pathLabel": {
@@ -3585,7 +3903,10 @@
           "backdropFilter": "none",
           "willChange": "auto",
           "color": "rgb(237, 237, 233)",
-          "backgroundColor": "rgba(0, 0, 0, 0)"
+          "backgroundColor": "rgba(0, 0, 0, 0)",
+          "overflow": "visible",
+          "position": "static",
+          "boxSizing": "border-box"
         }
       },
       "path": {
@@ -3617,7 +3938,10 @@
           "backdropFilter": "none",
           "willChange": "auto",
           "color": "rgb(237, 237, 233)",
-          "backgroundColor": "rgb(41, 43, 44)"
+          "backgroundColor": "rgb(41, 43, 44)",
+          "overflow": "clip",
+          "position": "static",
+          "boxSizing": "border-box"
         }
       },
       "browse": {
@@ -3649,7 +3973,10 @@
           "backdropFilter": "none",
           "willChange": "auto",
           "color": "rgb(237, 237, 233)",
-          "backgroundColor": "rgba(0, 0, 0, 0)"
+          "backgroundColor": "rgba(0, 0, 0, 0)",
+          "overflow": "visible",
+          "position": "static",
+          "boxSizing": "border-box"
         }
       },
       "accept": {
@@ -3681,7 +4008,10 @@
           "backdropFilter": "none",
           "willChange": "auto",
           "color": "rgb(32, 33, 34)",
-          "backgroundColor": "rgb(227, 228, 223)"
+          "backgroundColor": "rgb(227, 228, 223)",
+          "overflow": "visible",
+          "position": "absolute",
+          "boxSizing": "border-box"
         }
       },
       "done": {
@@ -3713,7 +4043,10 @@
           "backdropFilter": "none",
           "willChange": "auto",
           "color": "rgb(32, 33, 34)",
-          "backgroundColor": "rgb(227, 228, 223)"
+          "backgroundColor": "rgb(227, 228, 223)",
+          "overflow": "visible",
+          "position": "absolute",
+          "boxSizing": "border-box"
         }
       },
       "success": {
@@ -3745,7 +4078,10 @@
           "backdropFilter": "none",
           "willChange": "auto",
           "color": "rgb(237, 237, 233)",
-          "backgroundColor": "rgba(0, 0, 0, 0)"
+          "backgroundColor": "rgba(0, 0, 0, 0)",
+          "overflow": "visible",
+          "position": "absolute",
+          "boxSizing": "border-box"
         }
       },
       "title": {
@@ -3792,7 +4128,10 @@
           "backdropFilter": "none",
           "willChange": "auto",
           "color": "rgb(237, 237, 233)",
-          "backgroundColor": "rgba(0, 0, 0, 0)"
+          "backgroundColor": "rgba(0, 0, 0, 0)",
+          "overflow": "visible",
+          "position": "static",
+          "boxSizing": "border-box"
         }
       },
       "languageLabel": {
@@ -3824,7 +4163,10 @@
           "backdropFilter": "none",
           "willChange": "auto",
           "color": "rgb(237, 237, 233)",
-          "backgroundColor": "rgba(0, 0, 0, 0)"
+          "backgroundColor": "rgba(0, 0, 0, 0)",
+          "overflow": "visible",
+          "position": "static",
+          "boxSizing": "border-box"
         }
       },
       "pathLabel": {
@@ -3856,7 +4198,10 @@
           "backdropFilter": "none",
           "willChange": "auto",
           "color": "rgb(237, 237, 233)",
-          "backgroundColor": "rgba(0, 0, 0, 0)"
+          "backgroundColor": "rgba(0, 0, 0, 0)",
+          "overflow": "visible",
+          "position": "static",
+          "boxSizing": "border-box"
         }
       },
       "path": {
@@ -3888,7 +4233,10 @@
           "backdropFilter": "none",
           "willChange": "auto",
           "color": "rgb(237, 237, 233)",
-          "backgroundColor": "rgb(41, 43, 44)"
+          "backgroundColor": "rgb(41, 43, 44)",
+          "overflow": "clip",
+          "position": "static",
+          "boxSizing": "border-box"
         }
       },
       "browse": {
@@ -3920,7 +4268,10 @@
           "backdropFilter": "none",
           "willChange": "auto",
           "color": "rgb(237, 237, 233)",
-          "backgroundColor": "rgba(0, 0, 0, 0)"
+          "backgroundColor": "rgba(0, 0, 0, 0)",
+          "overflow": "visible",
+          "position": "static",
+          "boxSizing": "border-box"
         }
       },
       "accept": {
@@ -3952,7 +4303,10 @@
           "backdropFilter": "none",
           "willChange": "auto",
           "color": "rgb(32, 33, 34)",
-          "backgroundColor": "rgb(227, 228, 223)"
+          "backgroundColor": "rgb(227, 228, 223)",
+          "overflow": "visible",
+          "position": "static",
+          "boxSizing": "border-box"
         }
       },
       "done": {
@@ -3984,7 +4338,10 @@
           "backdropFilter": "none",
           "willChange": "auto",
           "color": "rgb(32, 33, 34)",
-          "backgroundColor": "rgb(227, 228, 223)"
+          "backgroundColor": "rgb(227, 228, 223)",
+          "overflow": "visible",
+          "position": "static",
+          "boxSizing": "border-box"
         }
       },
       "success": {
@@ -4016,7 +4373,10 @@
           "backdropFilter": "none",
           "willChange": "auto",
           "color": "rgb(237, 237, 233)",
-          "backgroundColor": "rgba(0, 0, 0, 0)"
+          "backgroundColor": "rgba(0, 0, 0, 0)",
+          "overflow": "visible",
+          "position": "static",
+          "boxSizing": "border-box"
         }
       },
       "title": {
@@ -4058,7 +4418,10 @@
           "backdropFilter": "none",
           "willChange": "auto",
           "color": "rgb(237, 237, 233)",
-          "backgroundColor": "rgba(0, 0, 0, 0)"
+          "backgroundColor": "rgba(0, 0, 0, 0)",
+          "overflow": "visible",
+          "position": "static",
+          "boxSizing": "border-box"
         }
       },
       "languageLabel": {
@@ -4090,7 +4453,10 @@
           "backdropFilter": "none",
           "willChange": "auto",
           "color": "rgb(237, 237, 233)",
-          "backgroundColor": "rgba(0, 0, 0, 0)"
+          "backgroundColor": "rgba(0, 0, 0, 0)",
+          "overflow": "visible",
+          "position": "static",
+          "boxSizing": "border-box"
         }
       },
       "pathLabel": {
@@ -4122,7 +4488,10 @@
           "backdropFilter": "none",
           "willChange": "auto",
           "color": "rgb(237, 237, 233)",
-          "backgroundColor": "rgba(0, 0, 0, 0)"
+          "backgroundColor": "rgba(0, 0, 0, 0)",
+          "overflow": "visible",
+          "position": "static",
+          "boxSizing": "border-box"
         }
       },
       "path": {
@@ -4154,7 +4523,10 @@
           "backdropFilter": "none",
           "willChange": "auto",
           "color": "rgb(237, 237, 233)",
-          "backgroundColor": "rgb(41, 43, 44)"
+          "backgroundColor": "rgb(41, 43, 44)",
+          "overflow": "clip",
+          "position": "static",
+          "boxSizing": "border-box"
         }
       },
       "browse": {
@@ -4186,7 +4558,10 @@
           "backdropFilter": "none",
           "willChange": "auto",
           "color": "rgb(237, 237, 233)",
-          "backgroundColor": "rgba(0, 0, 0, 0)"
+          "backgroundColor": "rgba(0, 0, 0, 0)",
+          "overflow": "visible",
+          "position": "static",
+          "boxSizing": "border-box"
         }
       },
       "accept": {
@@ -4218,7 +4593,10 @@
           "backdropFilter": "none",
           "willChange": "auto",
           "color": "rgb(32, 33, 34)",
-          "backgroundColor": "rgb(227, 228, 223)"
+          "backgroundColor": "rgb(227, 228, 223)",
+          "overflow": "visible",
+          "position": "absolute",
+          "boxSizing": "border-box"
         }
       },
       "done": {
@@ -4250,7 +4628,10 @@
           "backdropFilter": "none",
           "willChange": "auto",
           "color": "rgb(32, 33, 34)",
-          "backgroundColor": "rgb(227, 228, 223)"
+          "backgroundColor": "rgb(227, 228, 223)",
+          "overflow": "visible",
+          "position": "absolute",
+          "boxSizing": "border-box"
         }
       },
       "success": {
@@ -4282,7 +4663,10 @@
           "backdropFilter": "none",
           "willChange": "auto",
           "color": "rgb(237, 237, 233)",
-          "backgroundColor": "rgba(0, 0, 0, 0)"
+          "backgroundColor": "rgba(0, 0, 0, 0)",
+          "overflow": "visible",
+          "position": "absolute",
+          "boxSizing": "border-box"
         }
       },
       "title": {
