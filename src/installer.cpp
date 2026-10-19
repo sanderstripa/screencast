@@ -133,6 +133,8 @@ public:
             web.evaluate(L"['desktop','startMenu','launch'].forEach(id=>document.getElementById(id).checked=false)");
             web.capture(directory/(std::wstring(L"connect-actual-")+suffix+L"-off.png"));
             web.reference(true);web.evaluate(std::wstring(L"lang='")+(english?L"en":L"ru")+L"';light="+(dark?L"false":L"true")+L";installed=true;chromeReady=true;stage='"+page+L"';render()");
+            // Product-name substitution gives the centered launch row identical text width.
+            web.evaluate(L"document.getElementById('launchLabel').textContent="+InstallerWeb::jsString(tr(L"Запустить Screencast после установки",L"Launch Screencast after installation")));
             auto reference=web.evaluate(metrics);web.capture(directory/(std::wstring(L"connect-reference-")+suffix+L".png"));
             web.evaluate(L"['desktop','startMenu','launch'].forEach(id=>document.getElementById(id).checked=false)");
             web.capture(directory/(std::wstring(L"connect-reference-")+suffix+L"-off.png"));
@@ -325,7 +327,7 @@ int WINAPI wWinMain(HINSTANCE instance,HINSTANCE,PWSTR,int show) {
         if(!state.snapshotPath.empty() && (GetWindowLongPtrW(window,GWL_STYLE)&WS_CAPTION))throw std::runtime_error("System caption must be absent");
         RECT work{};SystemParametersInfoW(SPI_GETWORKAREA,0,&work,0);SetWindowPos(window,nullptr,work.left+(work.right-work.left-state.px(installerVisual::width))/2,work.top+(work.bottom-work.top-state.px(installerVisual::height))/2,0,0,SWP_NOSIZE|SWP_NOZORDER);
         DWORD corners=2;DwmSetWindowAttribute(window,DWMWA_WINDOW_CORNER_PREFERENCE,&corners,sizeof(corners));
-        ShowWindow(window,show);state.openWeb();
+        state.openWeb();ShowWindow(window,show);
         if(parameters.size()>=3&&parameters[1]==L"--wizard-test"){state.webTest(parameters[2]);state.folderTest(parameters[2]);state.uiTest(parameters[2]);}
         if(!state.snapshotPath.empty())SetTimer(window,2,200,nullptr);
         MSG message{};while(GetMessageW(&message,nullptr,0,0)>0){if(!IsDialogMessageW(window,&message)){TranslateMessage(&message);DispatchMessageW(&message);}}
