@@ -1,6 +1,6 @@
-# Screencast 0.4.5
+# Screencast 0.4.6
 
-- Replace every legacy shell icon alias, including 0.2.5, with the approved lavender camera artwork.
-- Refresh Windows icon caches after installing/updating shortcuts. Test actual installer-created shortcuts, registered icon and repair of an old icon during upgrade on an isolated Windows runner.
-- Rename the installer to Screencast-0.4.5-x64.exe.
-- Preserve application UI, recording behavior and user preferences.
+- Redraw the approved lavender camera/ribbon artwork as native vector paths and gradients.
+- Render 33 Windows icon sizes separately from vector geometry, with physical pixel alignment for the small camera and recording dot. Remove the raster-to-raster resizing pipeline.
+- Replace app, installer, uninstall and historical shortcut icon resources. Export native 2048/4096 PNGs and retain the scalable SVG source.
+- Preserve application/installer UI, recording behavior and preferences.

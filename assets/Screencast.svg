@@ -1,1 +1,20 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="2048" height="2048" viewBox="0 0 2048 2048"><image href="Screencast-2048.png" width="2048" height="2048"/></svg>
+<svg xmlns="http://www.w3.org/2000/svg" width="4096" height="4096" viewBox="24 24 1220 1220">
+<defs>
+<linearGradient id="top" x1="420" y1="370" x2="920" y2="130" gradientUnits="userSpaceOnUse"><stop stop-color="#645188"/><stop offset=".43" stop-color="#b6a3d0"/><stop offset="1" stop-color="#f2e9ff"/></linearGradient>
+<linearGradient id="right" x1="944" y1="404" x2="1092" y2="960" gradientUnits="userSpaceOnUse"><stop stop-color="#574274"/><stop offset=".5" stop-color="#ac96cf"/><stop offset="1" stop-color="#e2d4f4"/></linearGradient>
+<linearGradient id="left" x1="204" y1="310" x2="297" y2="807" gradientUnits="userSpaceOnUse"><stop stop-color="#f0e7fc"/><stop offset=".47" stop-color="#c0a9e2"/><stop offset="1" stop-color="#76609f"/></linearGradient>
+<linearGradient id="front" x1="273" y1="780" x2="844" y2="1011" gradientUnits="userSpaceOnUse"><stop stop-color="#e2d2f5"/><stop offset=".47" stop-color="#b59cd9"/><stop offset="1" stop-color="#625083"/></linearGradient>
+<radialGradient id="white" cx=".36" cy=".45" r=".8"><stop stop-color="#ffffff"/><stop offset=".7" stop-color="#f7f5f8"/><stop offset="1" stop-color="#d9d2e2"/></radialGradient>
+<linearGradient id="camera" x1="460" y1="535" x2="745" y2="770" gradientUnits="userSpaceOnUse"><stop stop-color="#cbb8ec"/><stop offset=".45" stop-color="#a48bce"/><stop offset="1" stop-color="#6d569d"/></linearGradient>
+<linearGradient id="red" x1="403" y1="445" x2="453" y2="509" gradientUnits="userSpaceOnUse"><stop stop-color="#ff5154"/><stop offset="1" stop-color="#ec101c"/></linearGradient>
+</defs>
+<path fill="#8e78ad" d="M643 75C809 65 1080 300 1186 505C1270 670 1137 850 919 1042C791 1157 717 1170 632 1173C485 1169 262 1009 133 820C25 662 24 562 124 427C273 230 486 80 643 75Z"/>
+<path fill="url(#top)" stroke="#d9caeb" stroke-width="2" d="M338 410C395 245 482 71 643 75C809 65 1080 300 1186 505C1202 538 1216 575 1217 600C1118 437 1012 380 874 376C694 316 496 328 338 410Z"/>
+<path fill="url(#right)" stroke="#c8b7df" stroke-width="2" d="M874 376C1023 371 1137 489 1197 552C1297 708 1088 907 919 1042C791 1157 717 1170 632 1173C793 1120 909 946 938 809C964 665 967 500 921 416C910 397 891 382 874 376Z"/>
+<path fill="url(#white)" d="M406 382H844C917 382 944 420 944 480V751C944 818 917 842 864 850C674 874 494 875 377 842C330 829 315 800 315 745V481C315 410 343 382 406 382Z"/>
+<rect id="camera-body" x="442" y="530" width="291" height="223" rx="44" fill="url(#camera)"/>
+<path fill="url(#camera)" d="M775 575L850 534Q884 515 884 550V728Q884 766 851 747L774 703Q754 692 754 669V608Q754 588 775 575Z"/>
+<circle id="record-dot" cx="426" cy="474" r="40" fill="url(#red)"/>
+<path fill="url(#front)" stroke="#e2d4f1" stroke-width="2" d="M47 600C31 808 262 1009 485 1148C542 1183 594 1176 632 1173C795 1175 904 969 938 809C844 865 576 890 378 840C220 818 78 731 47 600Z"/>
+<path fill="url(#left)" stroke="#e5d8f4" stroke-width="2" d="M643 75C486 80 273 230 124 427C25 560 26 652 47 700C125 788 252 827 378 840C335 813 315 781 315 710V477C316 311 437 119 643 75Z"/>
+</svg>

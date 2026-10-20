@@ -90,7 +90,7 @@ jobs:
           python tests/verify_themes.py build/smoke
       - name: Build shared CONNECT Installer
         run: |
-          ./scripts/build-connect-installer.ps1 -PayloadPath "$PWD/dist/Screencast-Windows-x64.zip" -Version '0.4.5' -OutFile "$PWD/dist/Screencast-0.4.5-x64.exe" -TestUI
+          ./scripts/build-connect-installer.ps1 -PayloadPath "$PWD/dist/Screencast-Windows-x64.zip" -Version '0.4.6' -OutFile "$PWD/dist/Screencast-0.4.6-x64.exe" -TestUI
 
       - name: Verify app, installer and shell branding
         shell: pwsh
@@ -99,12 +99,12 @@ jobs:
           New-Item -ItemType Directory -Force $folder | Out-Null
           $shell=New-Object -ComObject WScript.Shell
           $app=Join-Path $PWD 'dist/Screencast/Screencast.exe'
-          $icon=Join-Path $PWD 'dist/Screencast/assets/Screencast-shell-0.4.5.ico'
+          $icon=Join-Path $PWD 'dist/Screencast/assets/Screencast-shell-0.4.6.ico'
           foreach($name in @('Screencast.lnk','Uninstall.lnk')) {
             $link=$shell.CreateShortcut((Join-Path $folder $name))
             $link.TargetPath=$app;$link.IconLocation="$icon,0";$link.Save()
           }
-          ./tests/verify_shell.ps1 -App $app -Setup "$PWD/dist/Screencast-0.4.5-x64.exe" -Shortcuts $folder -IconsOnly
+          ./tests/verify_shell.ps1 -App $app -Setup "$PWD/dist/Screencast-0.4.6-x64.exe" -Shortcuts $folder -IconsOnly
 
       - uses: actions/upload-artifact@v4
         with:
@@ -112,8 +112,8 @@ jobs:
           path: dist/Screencast-Windows-x64.zip
       - uses: actions/upload-artifact@v4
         with:
-          name: Screencast-0.4.5-x64
-          path: dist/Screencast-0.4.5-x64.exe
+          name: Screencast-0.4.6-x64
+          path: dist/Screencast-0.4.6-x64.exe
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -127,6 +127,6 @@ jobs:
         run: |
           gh release view "$env:RELEASE_TAG" *> $null
           if($LASTEXITCODE -ne 0){
-            gh release create "$env:RELEASE_TAG" dist/Screencast-0.4.5-x64.exe dist/Screencast-Windows-x64.zip --verify-tag --title "Screencast $env:RELEASE_TAG" --notes-file RELEASE_NOTES.md
+            gh release create "$env:RELEASE_TAG" dist/Screencast-0.4.6-x64.exe dist/Screencast-Windows-x64.zip --verify-tag --title "Screencast $env:RELEASE_TAG" --notes-file RELEASE_NOTES.md
             if($LASTEXITCODE){throw 'Release publication failed'}
           }

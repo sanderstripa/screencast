@@ -1,11 +1,9 @@
-# Screencast lavender camera icon
+# Screencast vector camera icon
 
-`Screencast-master.png` is the native 1254 x 1254 transparent image redrawn with the built-in imagegen tool from the user-supplied concept on 2026-10-20. The outer white tile is removed; the inner white camera square remains.
+The approved lavender twisting ribbon, inner white camera square and red recording dot are redrawn as native Bezier paths and gradients in `Screencast.svg`. There are no embedded raster images, blur filters, grain, external tile or shadow.
 
-`render-icon.ps1` packages the tightly framed mark without changing its aspect ratio. The 2048 PNG is a large export, not a claim of additional source detail. ICO files contain 22 physical sizes (16 through 256); small entries are 32-bit DIB and the 256 entry is PNG. The legacy shell filename is an identical compatibility alias; new shortcuts use the 0.4.5 filename to avoid reusing the old icon location.
+`scripts/render-branding.cjs` renders each of 33 physical Windows icon sizes directly from the vector through Chromium at its final pixel size. Camera edges and the red dot align to the physical pixel grid at small sizes. No bitmap is resized to produce another size. ICO DIB entries store the native pixels unchanged; the 256 entry is PNG. The 2048 and 4096 exports also render directly from the vector, rather than enlarging a raster master.
 
-Generation prompt: Redraw the reference as a high-resolution Windows application icon. Preserve the lavender metallic twisting aperture ribbon, orientation, dimensional shading and inner rounded ivory square with a lavender video camera and one red recording dot. Remove the entire outer white tile, its shadow and page background. Transparent alpha outside the ribbon. Enlarge the complete mark with tiny safe margins; no cropping, new elements or text. Keep the symbol clear at small sizes.
+`icon-sizes/` contains the exact individual frames. All historical shell aliases contain the same artwork. Installer icon-location overrides and Windows cache notifications are retained. The real installation/upgrade checks verify old aliases and actual Desktop/Start/uninstall shortcuts.
 
-The pinned CONNECT installer receives the same ICO and a 256 PNG window icon at build time. The Screencast product adapter uses the current icon path and notifies Windows after updating shortcuts. Installer logic and UI assets remain unchanged.
-
-All historical shell aliases (0.2.5, 0.2.6, 0.4.3 and 0.4.4) contain the same current artwork. Installer branding overrides refresh the Windows shell cache after creating shortcuts; an isolated upgrade test corrupts an old alias and verifies it is replaced on reinstallation.
+Generate assets with `node scripts/render-branding.cjs` (Playwright and pngjs; installed Chrome). The app and installer consume the identical ICO; the Wails installer window uses the matching native 256 PNG.
