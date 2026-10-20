@@ -96,15 +96,16 @@ assert np.mean(abs(images[0].astype(float) - images[1].astype(float))) > 150
 icon=Image.open(Path('assets/Screencast.ico'))
 required={16,20,24,28,30,32,36,40,44,48,56,60,64,72,80,96,112,128,144,160,192,256}
 assert {(n,n) for n in required} <= icon.ico.sizes(), 'Missing native icon size; Windows would have to resample another entry'
-assert Path('assets/Screencast-shell-0.4.3.ico').read_bytes()==Path('assets/Screencast.ico').read_bytes(), 'Shortcuts and executable use different icon artwork'
+assert Path('assets/Screencast-shell-0.4.4.ico').read_bytes()==Path('assets/Screencast.ico').read_bytes(), 'Shortcuts and executable use different icon artwork'
 for size in icon.ico.sizes():
     alpha=np.asarray(icon.ico.getimage(size).convert('RGBA'))[:,:,3]
     y,x=np.where(alpha>128)
     assert x.max()-x.min()+1>=int(size[0]*.9) and y.max()-y.min()+1>=int(size[1]*.9), 'Icon artwork leaves excessive transparent padding'
     pixels=np.asarray(icon.ico.getimage(size).convert('RGBA')).astype(int)
     assert alpha[0,0]==0 and alpha[-1,-1]==0, 'Outer white tile/background must be absent'
-    center=pixels[size[0]//2,size[0]//2]
-    assert min(center[:3])>200 and center[3]>240, 'Inner white capture square must remain opaque'
+    center=pixels[int(size[0]*.65),int(size[0]*.32)]
+    assert min(center[:3])>200 and center[3]>240, 'Inner white camera square must remain opaque'
     opaque=pixels[alpha>200,:3]
-    assert np.count_nonzero((opaque[:,0]>opaque[:,1]+12)&(opaque[:,1]>=opaque[:,2]))>size[0]*size[1]*.15, 'Rose ribbon is missing'
+    assert np.count_nonzero((opaque[:,2]>opaque[:,0]+5)&(opaque[:,0]>opaque[:,1]+3))>size[0]*size[1]*.15, 'Lavender ribbon/camera is missing'
+    assert np.count_nonzero((opaque[:,0]>180)&(opaque[:,0]-opaque[:,1]>60)&(opaque[:,0]-opaque[:,2]>60))>=1, 'Red recording dot is missing'
 print('All focused controls match unfocused rendering; icon artwork fills every ICO size')

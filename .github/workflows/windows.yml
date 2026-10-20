@@ -90,7 +90,7 @@ jobs:
           python tests/verify_themes.py build/smoke
       - name: Build shared CONNECT Installer
         run: |
-          ./scripts/build-connect-installer.ps1 -PayloadPath "$PWD/dist/Screencast-Windows-x64.zip" -Version '0.4.3' -OutFile "$PWD/dist/Screencast-Setup-x64.exe" -TestUI
+          ./scripts/build-connect-installer.ps1 -PayloadPath "$PWD/dist/Screencast-Windows-x64.zip" -Version '0.4.4' -OutFile "$PWD/dist/Screencast-Setup-x64.exe" -TestUI
 
       - name: Verify app, installer and shell branding
         shell: pwsh
@@ -99,7 +99,7 @@ jobs:
           New-Item -ItemType Directory -Force $folder | Out-Null
           $shell=New-Object -ComObject WScript.Shell
           $app=Join-Path $PWD 'dist/Screencast/Screencast.exe'
-          $icon=Join-Path $PWD 'dist/Screencast/assets/Screencast-shell-0.4.3.ico'
+          $icon=Join-Path $PWD 'dist/Screencast/assets/Screencast-shell-0.4.4.ico'
           foreach($name in @('Screencast.lnk','Uninstall.lnk')) {
             $link=$shell.CreateShortcut((Join-Path $folder $name))
             $link.TargetPath=$app;$link.IconLocation="$icon,0";$link.Save()

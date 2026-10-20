@@ -38,7 +38,7 @@ Copy-Item -LiteralPath (Join-Path $repo 'assets/Screencast.ico') -Destination (J
 Copy-Item -LiteralPath (Join-Path $repo 'assets/Screencast-256.png') -Destination (Join-Path $core 'core/web/assets/icon.png') -Force
 $adapterPath=Join-Path $core 'adapters/screencast/adapter_windows.go'
 $adapterText=[IO.File]::ReadAllText($adapterPath)
-$adapterText=$adapterText.Replace('Screencast-shell-0.2.6.ico','Screencast-shell-0.4.3.ico')
+$adapterText=$adapterText.Replace('Screencast-shell-0.2.6.ico','Screencast-shell-0.4.4.ico')
 [IO.File]::WriteAllText($adapterPath,$adapterText,[Text.UTF8Encoding]::new($false))
 $sourceCommit=(git -C $repo rev-parse HEAD).Trim()
 & (Join-Path $core 'build.ps1') -Product 'screencast' -PayloadPath $PayloadPath -Version $Version -OutFile $OutFile -ExtensionPath $ExtensionPath -ExpectedExecutable $ExpectedExecutable -ProductCommit $sourceCommit -Go $Go

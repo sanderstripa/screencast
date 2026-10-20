@@ -34,9 +34,9 @@ function RenderIcon([int]$size) {
  $g.InterpolationMode='HighQualityBicubic';$g.PixelOffsetMode='HighQuality'
  $attributes=[Drawing.Imaging.ImageAttributes]::new();$attributes.SetWrapMode([Drawing.Drawing2D.WrapMode]::TileFlipXY)
  # Tight bounds of the approved mark; preserve aspect ratio, with a 1% safe margin.
- $width=$size*.98;$height=$width*1106/1178
+ $width=$size*.98;$height=$width*1101/1171
  $target=[Drawing.Rectangle]::new([int][Math]::Round(($size-$width)/2),[int][Math]::Round(($size-$height)/2),[int][Math]::Round($width),[int][Math]::Round($height))
- $g.DrawImage($source,$target,43,55,1178,1106,[Drawing.GraphicsUnit]::Pixel,$attributes)
+ $g.DrawImage($source,$target,47,73,1171,1101,[Drawing.GraphicsUnit]::Pixel,$attributes)
  $attributes.Dispose();$g.Dispose();return ,$bitmap
 }
 $master=RenderIcon 2048;$master.Save((Join-Path $Destination 'Screencast-2048.png'),[Drawing.Imaging.ImageFormat]::Png)
@@ -69,3 +69,4 @@ Copy-Item (Join-Path $Destination 'Screencast.ico') (Join-Path $Destination 'Scr
 
 Copy-Item (Join-Path $Destination "Screencast.ico") (Join-Path $Destination "Screencast-shell-0.4.3.ico") -Force
 $source.Dispose()
+Copy-Item (Join-Path $Destination 'Screencast.ico') (Join-Path $Destination 'Screencast-shell-0.4.4.ico') -Force
