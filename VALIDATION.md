@@ -63,3 +63,10 @@ Version 0.4.1: Windows CI run 39235433222 passed at e2b40d7. The installer now u
 - The downloaded branch artifacts were also checked locally on Windows: application and installer resource icons match; shortcuts render the same artwork at 16, 20, 24, 32, 48, 64, 128 and 256 pixels.
 - ICO entries cover 22 physical sizes. Alpha, artwork coverage, rose ribbon and opaque inner white square checks pass. Explorer resamples nonstandard 20/24 sizes through its standard-size cache; those comparisons use the same shell renderer for the reference, while canonical sizes compare directly with the native ICO entries.
 - The tracked portable archive is refreshed from this tested build. Only product branding/resources, packaging metadata and their verification changed; recording, installer behavior and UI components remain unchanged.
+
+## 0.4.4 corrected camera icon verification (2026-10-20)
+
+- Release source b1973f3: Windows workflow 39447888623 passed all application, media, UI, shared installer and shell checks.
+- Downloaded public installer and portable archive pass SHA-256 checks against GitHub asset digests. Installer: d60098121a3c6e65a36286c2b7939729b92cde522fcafaf72c12fe70555653f4. Portable: d32c9c561fca36b6b1ee8481387b94202cb15c487ad2441649ddbf0516d4a16a.
+- Local Windows checks of these public files confirm matching app/installer icons and correct shortcut artwork at 16, 20, 24, 32, 48, 64, 128 and 256 pixels. The 22 ICO entries preserve the lavender camera, red recording dot, inner white square and transparent exterior.
+- The tracked portable archive is refreshed from the published 0.4.4 asset. No application or installer behavior changes.
