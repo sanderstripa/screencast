@@ -47,9 +47,10 @@ public static class ShellCheck {
   IconInfo info;if(!GetIconInfo(handle,out info))throw new Exception("Missing icon");
   try{return Read(info.color,out width,out height);}finally{DeleteObject(info.color);DeleteObject(info.mask);}
  }
+ [DllImport("shell32.dll",CharSet=CharSet.Unicode)] static extern uint ExtractIconEx(string path,int index,out IntPtr large,out IntPtr small,uint count);
  public static byte[] Resource(string path,out int width,out int height) {
-  IntPtr module=LoadLibraryEx(path,IntPtr.Zero,2);if(module==IntPtr.Zero)throw new Exception("Cannot load icon resource");
-  try{return Icon(LoadIcon(module,new IntPtr(101)),out width,out height);}finally{FreeLibrary(module);}
+  IntPtr large,small;if(ExtractIconEx(path,0,out large,out small,1)==0)throw new Exception("Cannot load icon resource");
+  try{return Icon(large,out width,out height);}finally{DestroyIcon(large);DestroyIcon(small);}
  }
  public static void Shortcut(string path,string iconPath,int size) {
   Guid iid=typeof(Factory).GUID;Factory factory;Marshal.ThrowExceptionForHR(SHCreateItemFromParsingName(path,IntPtr.Zero,ref iid,out factory));IntPtr image;
@@ -71,11 +72,11 @@ public static class ShellCheck {
 }
 '@
 $shell=New-Object -ComObject WScript.Shell
-$icon=Join-Path (Split-Path -Parent $App) 'assets/Screencast-shell-0.2.6.ico'
+$icon=Join-Path (Split-Path -Parent $App) 'assets/Screencast-shell-0.4.3.ico'
 foreach($file in @('Screencast.lnk','Uninstall.lnk')) {
  $path=Join-Path $Shortcuts $file;$link=$shell.CreateShortcut($path)
  if($link.IconLocation -ne "$icon,0"){throw "Shortcut uses another icon: $($link.IconLocation)"}
- foreach($size in @(32,48,64,128)){[ShellCheck]::Shortcut($path,$icon,$size)}
+ foreach($size in @(16,20,24,32,48,64,128,256)){[ShellCheck]::Shortcut($path,$icon,$size)}
 }
 $w=0;$h=0;$setupPixels=[ShellCheck]::Resource($Setup,[ref]$w,[ref]$h)
 if($w-ne32-or$h-ne32){throw 'Installer icon is not 32x32'}

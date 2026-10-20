@@ -90,7 +90,21 @@ jobs:
           python tests/verify_themes.py build/smoke
       - name: Build shared CONNECT Installer
         run: |
-          ./scripts/build-connect-installer.ps1 -PayloadPath "$PWD/dist/Screencast-Windows-x64.zip" -Version '0.4.2' -OutFile "$PWD/dist/Screencast-Setup-x64.exe" -TestUI
+          ./scripts/build-connect-installer.ps1 -PayloadPath "$PWD/dist/Screencast-Windows-x64.zip" -Version '0.4.3' -OutFile "$PWD/dist/Screencast-Setup-x64.exe" -TestUI
+
+      - name: Verify app, installer and shell branding
+        shell: pwsh
+        run: |
+          $folder=Join-Path $PWD 'build/smoke/icon-shortcuts'
+          New-Item -ItemType Directory -Force $folder | Out-Null
+          $shell=New-Object -ComObject WScript.Shell
+          $app=Join-Path $PWD 'dist/Screencast/Screencast.exe'
+          $icon=Join-Path $PWD 'dist/Screencast/assets/Screencast-shell-0.4.3.ico'
+          foreach($name in @('Screencast.lnk','Uninstall.lnk')) {
+            $link=$shell.CreateShortcut((Join-Path $folder $name))
+            $link.TargetPath=$app;$link.IconLocation="$icon,0";$link.Save()
+          }
+          ./tests/verify_shell.ps1 -App $app -Setup "$PWD/dist/Screencast-Setup-x64.exe" -Shortcuts $folder -IconsOnly
 
       - uses: actions/upload-artifact@v4
         with:
