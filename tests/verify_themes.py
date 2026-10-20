@@ -96,7 +96,9 @@ assert np.mean(abs(images[0].astype(float) - images[1].astype(float))) > 150
 icon=Image.open(Path('assets/Screencast.ico'))
 required={16,20,24,28,30,32,36,40,44,48,56,60,64,72,80,96,112,128,144,160,192,256}
 assert {(n,n) for n in required} <= icon.ico.sizes(), 'Missing native icon size; Windows would have to resample another entry'
-assert Path('assets/Screencast-shell-0.4.4.ico').read_bytes()==Path('assets/Screencast.ico').read_bytes(), 'Shortcuts and executable use different icon artwork'
+assert Path('assets/Screencast-shell-0.4.5.ico').read_bytes()==Path('assets/Screencast.ico').read_bytes(), 'Shortcuts and executable use different icon artwork'
+for alias in Path('assets').glob('Screencast-shell-*.ico'):
+    assert alias.read_bytes()==Path('assets/Screencast.ico').read_bytes(), f'Stale legacy branding: {alias}'
 for size in icon.ico.sizes():
     alpha=np.asarray(icon.ico.getimage(size).convert('RGBA'))[:,:,3]
     y,x=np.where(alpha>128)

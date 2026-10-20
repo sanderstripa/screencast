@@ -78,7 +78,7 @@ public static class ShellCheck {
 }
 '@
 $shell=New-Object -ComObject WScript.Shell
-$icon=Join-Path (Split-Path -Parent $App) 'assets/Screencast-shell-0.4.4.ico'
+$icon=Join-Path (Split-Path -Parent $App) 'assets/Screencast-shell-0.4.5.ico'
 foreach($file in @('Screencast.lnk','Uninstall.lnk')) {
  $path=Join-Path $Shortcuts $file;$link=$shell.CreateShortcut($path)
  if($link.IconLocation -ne "$icon,0"){throw "Shortcut uses another icon: $($link.IconLocation)"}

@@ -36,7 +36,7 @@ Get the latest version from [GitHub Releases](https://github.com/sanderstripa/sc
 
 | File | Use |
 | --- | --- |
-| `Screencast-Setup-x64.exe` | Install for the current user, with optional desktop and Start menu shortcuts and an uninstaller. Administrator privileges are not required. |
+| `Screencast-0.4.5-x64.exe` | Install for the current user, with optional desktop and Start menu shortcuts and an uninstaller. Administrator privileges are not required. |
 | `Screencast-Windows-x64.zip` | Portable version. Extract the entire archive and run `Screencast.exe`. Keep the accompanying assets and scripts. |
 
 **Requirements:** Windows 11 x64. Windows N editions need the Media Feature Pack. A microphone and webcam are optional.

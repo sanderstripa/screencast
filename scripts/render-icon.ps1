@@ -70,3 +70,4 @@ Copy-Item (Join-Path $Destination 'Screencast.ico') (Join-Path $Destination 'Scr
 Copy-Item (Join-Path $Destination "Screencast.ico") (Join-Path $Destination "Screencast-shell-0.4.3.ico") -Force
 $source.Dispose()
 Copy-Item (Join-Path $Destination 'Screencast.ico') (Join-Path $Destination 'Screencast-shell-0.4.4.ico') -Force
+foreach($alias in @('0.2.5','0.4.5')) { Copy-Item (Join-Path $Destination 'Screencast.ico') (Join-Path $Destination "Screencast-shell-$alias.ico") -Force }

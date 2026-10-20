@@ -1,6 +1,6 @@
-# Screencast 0.4.4
+# Screencast 0.4.5
 
-- Replace the previous rose capture artwork with the correct lavender ribbon, video camera and red recording dot supplied by the user.
-- Preserve the inner white square, remove the outer white tile, and maximize the complete mark on a transparent canvas.
-- Update application, installer, uninstaller, shortcuts and README branding. Include 22 Windows icon sizes from 16 to 256 pixels.
-- No changes to application or installer behavior, interface or settings.
+- Replace every legacy shell icon alias, including 0.2.5, with the approved lavender camera artwork.
+- Refresh Windows icon caches after installing/updating shortcuts. Test actual installer-created shortcuts, registered icon and repair of an old icon during upgrade on an isolated Windows runner.
+- Rename the installer to Screencast-0.4.5-x64.exe.
+- Preserve application UI, recording behavior and user preferences.
