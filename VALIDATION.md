@@ -77,3 +77,6 @@ Version 0.4.1: Windows CI run 39235433222 passed at e2b40d7. The installer now u
 - TestInstalledBrandingAndLegacyIconUpgrade runs only on the disposable Windows runner. It verifies all installed icon aliases against the canonical artwork, the registered DisplayIcon, and actual Desktop/Start menu/uninstall shortcut locations. It deliberately corrupts the 0.2.5 alias after clean installation and confirms that the next installation repairs it, then checks normal uninstallation and preservation of user data/preferences.
 - Installer branding sends SHCNE_ASSOCCHANGED after shortcut creation to invalidate stale Windows icon caches. No Explorer restart or cache-file deletion is performed.
 - The installer output and release asset are named Screencast-0.4.5-x64.exe.
+
+- Published tag v0.4.5 (01a7e89): release Windows workflow 39450497382 passed. Public installer and portable archive SHA-256 match GitHub digests: 0c7422156908b4f22c8197702aa2d64cbd9da3de656f50f1d69012ad7204e46b and 8e22a54477faa551fcbc988fcedad00d2bc930416e2046641e066b8682fc79e6.
+- Downloaded public files were checked locally: app/installer resource icons match; current and every historical alias shortcut render the same current artwork at 16/20/24/32/48/64/128/256 pixels. Tracked portable archive is updated from the public release.
