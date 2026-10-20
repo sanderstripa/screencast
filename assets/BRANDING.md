@@ -6,6 +6,6 @@
 
 Generation prompt: Redraw the reference as a high-resolution Windows application icon. Preserve the lavender metallic twisting aperture ribbon, orientation, dimensional shading and inner rounded ivory square with a lavender video camera and one red recording dot. Remove the entire outer white tile, its shadow and page background. Transparent alpha outside the ribbon. Enlarge the complete mark with tiny safe margins; no cropping, new elements or text. Keep the symbol clear at small sizes.
 
-The pinned CONNECT installer receives the same ICO and a 256 PNG window icon at build time. Only the Screencast icon-location strings in its product adapter are updated. Installer logic and UI assets remain unchanged.
+The pinned CONNECT installer receives the same ICO and a 256 PNG window icon at build time. The Screencast product adapter uses the current icon path and notifies Windows after updating shortcuts. Installer logic and UI assets remain unchanged.
 
 All historical shell aliases (0.2.5, 0.2.6, 0.4.3 and 0.4.4) contain the same current artwork. Installer branding overrides refresh the Windows shell cache after creating shortcuts; an isolated upgrade test corrupts an old alias and verifies it is replaced on reinstallation.

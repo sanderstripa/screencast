@@ -70,3 +70,10 @@ Version 0.4.1: Windows CI run 39235433222 passed at e2b40d7. The installer now u
 - Downloaded public installer and portable archive pass SHA-256 checks against GitHub asset digests. Installer: d60098121a3c6e65a36286c2b7939729b92cde522fcafaf72c12fe70555653f4. Portable: d32c9c561fca36b6b1ee8481387b94202cb15c487ad2441649ddbf0516d4a16a.
 - Local Windows checks of these public files confirm matching app/installer icons and correct shortcut artwork at 16, 20, 24, 32, 48, 64, 128 and 256 pixels. The 22 ICO entries preserve the lavender camera, red recording dot, inner white square and transparent exterior.
 - The tracked portable archive is refreshed from the published 0.4.4 asset. No application or installer behavior changes.
+
+## 0.4.5 legacy icon upgrade verification (2026-10-20)
+
+- Source a53718f: Windows workflow 39449562071 passed the application/media/UI, shared installer, shell and new real-install branding checks.
+- TestInstalledBrandingAndLegacyIconUpgrade runs only on the disposable Windows runner. It verifies all installed icon aliases against the canonical artwork, the registered DisplayIcon, and actual Desktop/Start menu/uninstall shortcut locations. It deliberately corrupts the 0.2.5 alias after clean installation and confirms that the next installation repairs it, then checks normal uninstallation and preservation of user data/preferences.
+- Installer branding sends SHCNE_ASSOCCHANGED after shortcut creation to invalidate stale Windows icon caches. No Explorer restart or cache-file deletion is performed.
+- The installer output and release asset are named Screencast-0.4.5-x64.exe.
