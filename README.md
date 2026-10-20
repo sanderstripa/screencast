@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/Screencast-2048.png" width="128" height="128" alt="Screencast icon">
+  <img src="assets/Screencast.svg" width="128" height="128" alt="Screencast icon">
 </p>
 
 <h1 align="center">Screencast</h1>

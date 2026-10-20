@@ -80,3 +80,10 @@ Version 0.4.1: Windows CI run 39235433222 passed at e2b40d7. The installer now u
 
 - Published tag v0.4.5 (01a7e89): release Windows workflow 39450497382 passed. Public installer and portable archive SHA-256 match GitHub digests: 0c7422156908b4f22c8197702aa2d64cbd9da3de656f50f1d69012ad7204e46b and 8e22a54477faa551fcbc988fcedad00d2bc930416e2046641e066b8682fc79e6.
 - Downloaded public files were checked locally: app/installer resource icons match; current and every historical alias shortcut render the same current artwork at 16/20/24/32/48/64/128/256 pixels. Tracked portable archive is updated from the public release.
+
+## 0.4.6 vector icon verification (2026-10-20)
+
+- Source d68da7b: Windows workflow 39453813851 passed app/media/UI, real install/update/uninstall branding, and Windows shell checks.
+- Replaced the previous embedded raster SVG and bicubic/coverage bitmap resize chain with native Bezier paths and gradients. Every ICO frame is rendered independently at its physical size through Chromium, without resizing another bitmap. 33 sizes cover 16 through 256 pixels; native 2048/4096 exports and scalable SVG are retained.
+- Tests verify frame-for-frame identity with the native renders, no raster image or blur in the SVG, complete transparency outside the mark, solid inner white square, and recognizable lavender camera/red recording dot. Solid recording-dot color contrast is at least 150 at 16/20/24/32/48/64.
+- Local Windows shell checks pass at 16/20/24/32/48/64/128/256. The README also renders the vector directly. Other UI, fonts, settings and recording behavior are unchanged.
