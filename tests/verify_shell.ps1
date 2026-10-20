@@ -55,16 +55,22 @@ public static class ShellCheck {
  public static void Shortcut(string path,string iconPath,int size) {
   Guid iid=typeof(Factory).GUID;Factory factory;Marshal.ThrowExceptionForHR(SHCreateItemFromParsingName(path,IntPtr.Zero,ref iid,out factory));IntPtr image;
   try{Marshal.ThrowExceptionForHR(factory.GetImage(new Size(size),4,out image));}finally{Marshal.ReleaseComObject(factory);}
-  IntPtr expected=LoadImage(IntPtr.Zero,iconPath,1,size,size,16);
+  // Explorer's image cache uses standard 16/32/48/etc sizes and resamples 20/24,
+  // even when exact ICO entries exist. Compare these two sizes through the same
+  // shell renderer; canonical sizes must still match the native ICO entry exactly.
+  bool cachedSize=size==20 || size==24;
+  IntPtr expected;
+  if(cachedSize){Factory source;Marshal.ThrowExceptionForHR(SHCreateItemFromParsingName(iconPath,IntPtr.Zero,ref iid,out source));try{Marshal.ThrowExceptionForHR(source.GetImage(new Size(size),4,out expected));}finally{Marshal.ReleaseComObject(source);}}
+  else expected=LoadImage(IntPtr.Zero,iconPath,1,size,size,16);
   try {
-   int w,h,ew,eh;byte[] pixels=Read(image,out w,out h),reference=Icon(expected,out ew,out eh);
+   int w,h,ew,eh;byte[] pixels=Read(image,out w,out h),reference=cachedSize?Read(expected,out ew,out eh):Icon(expected,out ew,out eh);
    if(w!=size || h!=size || ew!=size || eh!=size)throw new Exception("Shortcut returned a small bitmap");
    long error=0,count=0;for(int y=0;y<h;y++)for(int x=0;x<w;x++){
     int p=(y*w+x)*4;if(reference[p+3]<250 || (x<size/3 && y>size*2/3))continue;
     for(int c=0;c<3;c++){error+=Math.Abs(pixels[p+c]-reference[p+c]);count++;}
    }
    if(count==0 || (double)error/count>2.0)throw new Exception("Shortcut icon was resampled from a low-resolution source: "+((double)error/count));
-  }finally{DeleteObject(image);DestroyIcon(expected);}
+  }finally{DeleteObject(image);if(cachedSize)DeleteObject(expected);else DestroyIcon(expected);}
  }
  public static IntPtr[] Windows() {
   List<IntPtr> windows=new List<IntPtr>();EnumWindows((window,data)=>{StringBuilder name=new StringBuilder(128);GetClassName(window,name,128);if(name.ToString()=="ScreencastWindow")windows.Add(window);return true;},IntPtr.Zero);return windows.ToArray();
