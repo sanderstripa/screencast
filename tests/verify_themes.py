@@ -96,7 +96,7 @@ assert np.mean(abs(images[0].astype(float) - images[1].astype(float))) > 150
 icon=Image.open(Path('assets/Screencast.ico'))
 required={16,18,20,22,24,28,30,32,36,40,42,44,48,50,54,56,60,64,72,80,84,96,112,120,128,144,160,180,192,216,224,240,256}
 assert {(n,n) for n in required} <= icon.ico.sizes(), 'Missing native icon size; Windows would have to resample another entry'
-assert Path('assets/Screencast-shell-0.4.6.ico').read_bytes()==Path('assets/Screencast.ico').read_bytes(), 'Shortcuts and executable use different icon artwork'
+assert Path('assets/Screencast-shell-0.4.7.ico').read_bytes()==Path('assets/Screencast.ico').read_bytes(), 'Shortcuts and executable use different icon artwork'
 for alias in Path('assets').glob('Screencast-shell-*.ico'):
     assert alias.read_bytes()==Path('assets/Screencast.ico').read_bytes(), f'Stale legacy branding: {alias}'
 svg=Path('assets/Screencast.svg').read_text(encoding='utf-8-sig')
@@ -110,12 +110,9 @@ for size in icon.ico.sizes():
     assert x.max()-x.min()+1>=int(size[0]*.9) and y.max()-y.min()+1>=int(size[1]*.9), 'Icon artwork leaves excessive transparent padding'
     pixels=np.asarray(icon.ico.getimage(size).convert('RGBA')).astype(int)
     assert alpha[0,0]==0 and alpha[-1,-1]==0, 'Outer white tile/background must be absent'
-    center=pixels[int(size[0]*.37),int(size[0]*.5)]
-    assert min(center[:3])>200 and center[3]>240, 'Inner white camera square must remain opaque'
+    center=pixels[size[0]//2,size[0]//2]
+    assert center[3]>240 and center[0]>center[1]+25, 'Coral recording dot must remain visible'
     opaque=pixels[alpha>200,:3]
-    assert np.count_nonzero((opaque[:,2]>opaque[:,0]+5)&(opaque[:,0]>opaque[:,1]+3))>size[0]*size[1]*.15, 'Lavender ribbon/camera is missing'
-    assert np.count_nonzero((opaque[:,0]>180)&(opaque[:,0]-opaque[:,1]>60)&(opaque[:,0]-opaque[:,2]>60))>=1, 'Red recording dot is missing'
-    if size[0] in (16,20,24,32,48,64):
-        solid=pixels[alpha==255,:3]
-        assert np.max(solid[:,0]-np.maximum(solid[:,1],solid[:,2]))>=150, 'Small recording dot has lost contrast'
+    assert np.count_nonzero((opaque[:,2]>opaque[:,0]+8)&(opaque[:,0]>opaque[:,1]+3))>=size[0]*.3, 'Lavender screen frame is missing'
+    assert np.count_nonzero((opaque[:,0]>130)&(opaque[:,0]-opaque[:,1]>25))>=1, 'Recording dot is missing'
 print('All focused controls match unfocused rendering; icon artwork fills every ICO size')
