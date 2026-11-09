@@ -1,2 +1,4 @@
 1 24 "app.manifest"
 101 ICON "Screencast.ico"
+
+4 RCDATA "Montserrat.ttf"

@@ -25,6 +25,7 @@
 #include "vpn_icons.h"
 #include "window_position.h"
 #include "settings_backdrop.h"
+#include "torrent_visual.h"
 #include "recording_path.h"
 
 int encoderSelfTest(std::wstring const& directory);
@@ -133,7 +134,7 @@ public:
         if(!open)for(auto const& [id,c]:controls)if(settingControl(id))ShowWindow(c.window,SW_HIDE);
         RedrawWindow(window,nullptr,nullptr,RDW_INVALIDATE|RDW_ALLCHILDREN|RDW_UPDATENOW);
         // Start the clock after backdrop capture, visibility changes and the first paint.
-        sheetTime=GetTickCount64();SetTimer(window,6,16,nullptr);SetFocus(open?controls[CloseSettings].window:window);
+        sheetTime=GetTickCount64();SetTimer(window,6,16,nullptr);SetFocus(window);
     }
     void sheetTick(){
         BOOL motion=TRUE;SystemParametersInfoW(SPI_GETCLIENTAREAANIMATION,0,&motion,0);
@@ -448,7 +449,7 @@ public:
     }
     bool settingControl(int id)const{return (id>=ThemeSystem&&id<=ThemeDark)||id==Language||id==LanguageEnglish||id==SaveFolder||id==CloseSettings||id==UpdateApp||id==ConnectLink;}
     void showPage(){
-        for(auto& [id,c]:controls)ShowWindow(c.window,(settingsOpen?(settingControl(id)&&sheetProgress==1):!settingControl(id))?SW_SHOW:SW_HIDE);
+        for(auto& [id,c]:controls)ShowWindow(c.window,(!settingsOpen&&!settingControl(id))?SW_SHOW:SW_HIDE);
         InvalidateRect(window,nullptr,FALSE);
     }
     void changeLanguage(bool value){english=value;for(auto& [id,c]:controls)updateText(id);savePreferences();InvalidateRect(window,nullptr,FALSE);}
@@ -539,42 +540,48 @@ public:
     void paint(HDC dc){
         if(!settingsOpen){paintWorking(dc);return;}
         RECT r{};GetClientRect(window,&r);FillRect(dc,&r,brush);backdrop.paint(dc,r.right,r.bottom);
-        int offset=sheetOffset(),left=sheetLeft();
-        auto saved=SaveDC(dc);SetViewportOrgEx(dc,left,offset,nullptr);
-        Gdiplus::Graphics g(dc);g.SetSmoothingMode(Gdiplus::SmoothingModeAntiAlias);
-        auto box=[&](int x,int y,int w,int h,COLORREF color,int radius){
-            auto pen=CreatePen(PS_SOLID,1,color);auto fill=CreateSolidBrush(color);
-            auto p=SelectObject(dc,pen),b=SelectObject(dc,fill);RoundRect(dc,px(x),px(y),px(x+w),px(y+h),px(radius*2),px(radius*2));SelectObject(dc,p);SelectObject(dc,b);DeleteObject(pen);DeleteObject(fill);
-        };
-        for(int i=24;i>0;--i){Gdiplus::SolidBrush shadow(Gdiplus::Color(BYTE(dark?3:2),0,0,0));float x=-px(i)*.7f,y=float(px(8)),w=px(720)+px(i)*1.4f,h=float(px(558+i)),radius=float(px(14));Gdiplus::GraphicsPath path;path.AddArc(x,y,radius*2,radius*2,180,90);path.AddArc(x+w-radius*2,y,radius*2,radius*2,270,90);path.AddArc(x+w-radius*2,y+h-radius*2,radius*2,radius*2,0,90);path.AddArc(x,y+h-radius*2,radius*2,radius*2,90,90);path.CloseFigure();g.FillPath(&shadow,&path);}
-        box(0,-14,720,574,sheetSurface(),14);
-        auto label=[&](std::wstring const& value,int x,int y,int w,int h,HFONT face,COLORREF color,UINT flags=DT_LEFT){text(dc,value,x,y,w,h,face,color,flags|DT_SINGLELINE|DT_VCENTER|DT_END_ELLIPSIS);};
-        auto rule=[&](int y){auto pen=CreatePen(PS_SOLID,1,sheetLine());auto old=SelectObject(dc,pen);MoveToEx(dc,px(28),px(y),nullptr);LineTo(dc,px(692),px(y));SelectObject(dc,old);DeleteObject(pen);};
-        auto section=[&](std::wstring const& value,int y){label(value,28,y,664,28,heading,palette.text);rule(y+31);};
-        auto large=CreateFontW(-px(20),0,0,0,FW_MEDIUM,FALSE,FALSE,FALSE,DEFAULT_CHARSET,OUT_DEFAULT_PRECIS,CLIP_DEFAULT_PRECIS,CLEARTYPE_QUALITY,DEFAULT_PITCH,L"Montserrat");
-        label(english?L"Settings":L"Настройки",28,13,624,39,large,palette.text);DeleteObject(large);
-        section(english?L"Appearance":L"Внешний вид",60);
-        label(english?L"Theme":L"Тема",28,100,384,34,font,palette.text);
-        box(419,97,276,40,sheetField(),8);
-        section(english?L"Interface language":L"Язык интерфейса",146);
-        section(english?L"Recording storage":L"Сохранение записи",234);
-        label(english?L"Recording folder":L"Папка записи",28,274,384,36,font,palette.text);
-        box(422,274,170,36,sheetField(),7);
-        label(saveFolder,432,274,150,36,smallFont,palette.muted);
-        label(english?L"MP4 files are saved automatically with date and time.":L"MP4 сохраняются автоматически с датой и временем.",28,320,664,36,font,palette.muted);
-        section(english?L"About Screencast":L"О Screencast",370);
-        label(english?L"Screencast version":L"Версия Screencast",28,405,514,27,font,palette.text);
-        label(SCREENCAST_VERSION_W,542,405,150,27,font,palette.text,DT_RIGHT);rule(434);
-        label(english?L"Developer":L"Разработчик",28,436,484,27,font,palette.text);
-        label(L"Sander Stripa",512,436,180,27,font,palette.muted,DT_RIGHT);
-        RestoreDC(dc,saved);
-        if(sheetProgress<1){
-            for(auto const& [id,c]:controls)if(settingControl(id)){
-                RECT r{};GetWindowRect(c.window,&r);MapWindowPoints(nullptr,window,reinterpret_cast<POINT*>(&r),2);
-                auto state=SaveDC(dc);SetViewportOrgEx(dc,r.left,r.top,nullptr);IntersectClipRect(dc,0,0,r.right-r.left,r.bottom-r.top);
-                DRAWITEMSTRUCT item{};item.CtlID=id;item.hDC=dc;item.rcItem={0,0,r.right-r.left,r.bottom-r.top};draw(item);RestoreDC(dc,state);
-            }
+        drawTorrentSettings(dc,r);
+    }
+    visual::Canvas settingsCanvas;
+    int settingsHover=-1,settingsKeyboard=CloseSettings;
+    RECT settingRect(int id)const{
+        auto point=settingsPositions.at(id);RECT size{};GetClientRect(controls.at(id).window,&size);
+        return {sheetLeft()+px(point.x),px(point.y),sheetLeft()+px(point.x)+size.right,px(point.y)+size.bottom};
+    }
+    int settingHit(int x,int y)const{
+        if(sheetProgress!=1)return -1;
+        POINT p{x,y};for(auto const& [id,c]:controls)if(settingControl(id)){auto r=settingRect(id);if(PtInRect(&r,p))return id;}return -1;
+    }
+    void drawTorrentSettings(HDC dc,RECT area){
+        // Seed Direct2D with the cached working surface, then draw the complete sheet.
+        auto memory=CreateCompatibleDC(dc);BITMAPINFO info{};info.bmiHeader.biSize=sizeof(BITMAPINFOHEADER);info.bmiHeader.biWidth=area.right;info.bmiHeader.biHeight=-area.bottom;info.bmiHeader.biPlanes=1;info.bmiHeader.biBitCount=32;
+        void* pixels{};auto bitmap=CreateDIBSection(dc,&info,DIB_RGB_COLORS,&pixels,nullptr,0);auto old=SelectObject(memory,bitmap);BitBlt(memory,0,0,area.right,area.bottom,dc,0,0,SRCCOPY);GdiFlush();
+        auto& c=settingsCanvas;c.dark=dark;
+        if(c.beginDC(window,dc,area,dpi)){
+            ComPtr<ID2D1Bitmap> background;
+            c.rt->CreateBitmap(D2D1::SizeU(area.right,area.bottom),pixels,area.right*4,D2D1::BitmapProperties(D2D1::PixelFormat(DXGI_FORMAT_B8G8R8A8_UNORM,D2D1_ALPHA_MODE_IGNORE),float(dpi),float(dpi)),&background);
+            if(background)c.rt->DrawBitmap(background.Get(),D2D1::RectF(0,0,c.width,c.height));
+            float left=float(sheetLeft())/c.scale,right=left+720,offset=float(sheetOffset())/c.scale;
+            c.rt->SetTransform(D2D1::Matrix3x2F::Translation(left,offset));
+            for(int i=24;i>0;--i){c.color(0);c.ink->SetOpacity(dark?.012f:.009f);c.rt->FillRoundedRectangle(D2D1::RoundedRect(D2D1::RectF(-i*.7f,8,720+i*.7f,566.f+i),14,14),c.ink.Get());}c.ink->SetOpacity(1);
+            UINT surface=dark?0x202124:0xfcfcfd,field=dark?0x28292d:0xf3f4f5,line=dark?0x35363b:0xe6e7e9;
+            c.box(D2D1::RectF(0,0,720,560),surface,14);c.box(D2D1::RectF(0,0,720,20),surface,0);
+            auto rect=[&](int id){auto p=settingsPositions.at(id);RECT size{};GetClientRect(controls.at(id).window,&size);return D2D1::RectF(float(p.x),float(p.y),p.x+size.right/c.scale,p.y+size.bottom/c.scale);};
+            auto t=[&](wchar_t const* ru,wchar_t const* en){return std::wstring(english?en:ru);};
+            c.label(t(L"Настройки",L"Settings"),D2D1::RectF(28,13,652,52),20,true);
+            auto close=rect(CloseSettings);if(settingsHover==CloseSettings)c.box(close,dark?0x54242f:0xf6d1d9,16);c.close(close.left+11,close.top+11,settingsHover==CloseSettings);
+            auto heading=[&](std::wstring value,float y){c.label(value,D2D1::RectF(28,y,692,y+28),13,true);c.line(28,y+31,692,y+31,line,1);};
+            heading(t(L"Внешний вид",L"Appearance"),60);c.label(t(L"Тема",L"Theme"),D2D1::RectF(28,100,412,134),13);
+            c.box(D2D1::RectF(419,97,695,137),field,8,line);
+            for(int id=ThemeSystem;id<=ThemeDark;++id){auto b=rect(id);bool chosen=theme==id-ThemeSystem;if(chosen)c.box(D2D1::RectF(b.left+2,b.top+1,b.right-2,b.bottom-1),surface,6,line);else if(settingsHover==id)c.box(b,c.selected(),6);c.label(tr(controls.at(id).label),b,12,false,0,DWRITE_TEXT_ALIGNMENT_CENTER);}
+            heading(t(L"Язык интерфейса",L"Interface language"),146);auto lang=rect(Language);c.box(lang,field,7,line);c.label(english?L"English":L"Русский",D2D1::RectF(lang.left+12,lang.top,lang.right-30,lang.bottom),13);c.chevron(lang.right-22,lang.top+15);
+            heading(t(L"Сохранение записи",L"Recording storage"),234);c.label(t(L"Папка записи",L"Recording folder"),D2D1::RectF(28,274,412,310),13);c.box(D2D1::RectF(422,274,592,310),field,7,line);c.label(saveFolder,D2D1::RectF(432,274,582,310),12,false,c.muted());c.button(t(L"Выбрать",L"Choose"),rect(SaveFolder),false,settingsHover==SaveFolder);
+            c.label(t(L"MP4 сохраняются автоматически с датой и временем.",L"MP4 files are saved automatically with date and time."),D2D1::RectF(28,320,692,356),12,false,c.muted());
+            heading(t(L"О Screencast",L"About Screencast"),370);c.label(t(L"Версия Screencast",L"Screencast version"),D2D1::RectF(28,405,542,432),13);c.label(SCREENCAST_VERSION_W,D2D1::RectF(542,405,692,432),13,false,0,DWRITE_TEXT_ALIGNMENT_TRAILING);c.line(28,434,692,434,line,1);c.label(t(L"Разработчик",L"Developer"),D2D1::RectF(28,436,512,463),13);c.label(L"Sander Stripa",D2D1::RectF(512,436,692,463),13,false,c.muted(),DWRITE_TEXT_ALIGNMENT_TRAILING);c.button(t(L"Обновить",L"Update"),rect(UpdateApp),false,settingsHover==UpdateApp);
+            c.label(L"by connect.",rect(ConnectLink),11,false,settingsHover==ConnectLink?(dark?0xb6b7bd:0x55585d):c.muted(),DWRITE_TEXT_ALIGNMENT_CENTER);
+            c.rt->SetTransform(D2D1::Matrix3x2F::Identity());c.end();
         }
+        SelectObject(memory,old);DeleteObject(bitmap);DeleteDC(memory);
     }
     void paintWorking(HDC dc) {
         RECT r{}; GetClientRect(window, &r); FillRect(dc, &r, brush);
@@ -830,12 +837,19 @@ public:
         SendMessageW(window,WM_CONTEXTMENU,reinterpret_cast<WPARAM>(window),MAKELPARAM(menuPoint.x,menuPoint.y));
         contextMenuTesting=false;
         require(settingsOpen,L"Settings did not open through the context menu");
+        RedrawWindow(window,nullptr,nullptr,RDW_INVALIDATE|RDW_ALLCHILDREN|RDW_UPDATENOW);DwmFlush();
+        auto visibleDC=GetDC(window);
+        for(int x:{10,360,700})for(int y:{54,230,360,510}){
+            auto actual=GetPixel(visibleDC,sheetLeft()+px(x),px(y));
+            require(actual==sheetSurface(),L"Visible settings surface is shifted, clipped or incomplete");
+        }
+        ReleaseDC(window,visibleDC);
         GetWindowRect(window,&outer);
         auto sheetHeader=MAKELPARAM(outer.left+sheetLeft()+px(160),outer.top+px(30));
         require(SendMessageW(window,WM_NCHITTEST,0,sheetHeader)==HTCAPTION,L"Settings header cannot drag the window");
         auto sheetClose=MAKELPARAM(outer.left+sheetLeft()+px(686),outer.top+px(30));
         require(SendMessageW(window,WM_NCHITTEST,0,sheetClose)==HTCLIENT,L"Settings close button became a drag target");
-        require((GetWindowLongPtrW(controls[Language].window,GWL_STYLE)&WS_VISIBLE)!=0 && !(GetWindowLongPtrW(controls[Source].window,GWL_STYLE)&WS_VISIBLE),L"Settings visibility is incorrect");
+        require(!(GetWindowLongPtrW(controls[Source].window,GWL_STYLE)&WS_VISIBLE),L"Working controls remain visible under settings");
         auto source=controls[SourceKind].selected;auto mic=live->micEnabled.load();auto camera=live->cameraEnabled.load();
         preferencesKey=L"Software\\ScreencastUITest-"+std::to_wstring(GetCurrentProcessId());testing=false;
         try{
@@ -989,8 +1003,8 @@ LRESULT CALLBACK procedure(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam
         }
         case WM_MOUSEWHEEL: app->scrollTo(app->scroll - GET_WHEEL_DELTA_WPARAM(wParam) * app->px(60) / WHEEL_DELTA); return 0;
         case WM_LBUTTONDOWN: if(app->settingsOpen){int x=GET_X_LPARAM(lParam);if(x<app->sheetLeft()||x>app->sheetLeft()+app->px(720)||GET_Y_LPARAM(lParam)>app->px(560))app->animateSettings(false);return 0;}app->dragCamera(GET_X_LPARAM(lParam),GET_Y_LPARAM(lParam),true);return 0;
-        case WM_MOUSEMOVE: if(app->dragging) app->dragCamera(GET_X_LPARAM(lParam),GET_Y_LPARAM(lParam),false);return 0;
-        case WM_LBUTTONUP: if(app->dragging) {app->dragging=false;ReleaseCapture();}return 0;
+        case WM_MOUSEMOVE: if(app->settingsOpen){app->settingsHover=app->settingHit(GET_X_LPARAM(lParam),GET_Y_LPARAM(lParam));InvalidateRect(hwnd,nullptr,FALSE);TRACKMOUSEEVENT track{sizeof(track),TME_LEAVE,hwnd,0};TrackMouseEvent(&track);return 0;}if(app->dragging) app->dragCamera(GET_X_LPARAM(lParam),GET_Y_LPARAM(lParam),false);return 0;
+        case WM_LBUTTONUP: if(app->settingsOpen){int id=app->settingHit(GET_X_LPARAM(lParam),GET_Y_LPARAM(lParam));if(id>=0)app->command(id);return 0;}if(app->dragging) {app->dragging=false;ReleaseCapture();}return 0;
         case WM_CAPTURECHANGED: app->dragging=false;return 0;
         case WM_DRAWITEM: {auto item=*reinterpret_cast<DRAWITEMSTRUCT*>(lParam);bufferedPaint(item.hDC,item.rcItem,[&](HDC back){item.hDC=back;app->draw(item);});return TRUE;}
         case WM_PAINT: {if(app->idleTestPhase==1)++app->idlePaints; PAINTSTRUCT ps{}; auto dc = BeginPaint(hwnd, &ps);RECT client{};GetClientRect(hwnd,&client);bufferedPaint(dc,client,[](HDC back){app->paint(back);}); EndPaint(hwnd, &ps); return 0; }
@@ -1006,7 +1020,11 @@ LRESULT CALLBACK procedure(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam
             }
             auto r = reinterpret_cast<RECT*>(lParam); SetWindowPos(hwnd, nullptr, r->left,r->top,r->right-r->left,r->bottom-r->top,SWP_NOZORDER); app->scrollRange();app->layoutSettings(); return 0;
         }
+        case WM_MOUSELEAVE:app->settingsHover=-1;InvalidateRect(hwnd,nullptr,FALSE);return 0;
+        case WM_SETCURSOR:if(app->settingsOpen&&LOWORD(lParam)==HTCLIENT){SetCursor(LoadCursorW(nullptr,app->settingsHover==ConnectLink?IDC_HAND:IDC_ARROW));return TRUE;}break;
+        case WM_KEYDOWN:if(app->settingsOpen){if(wParam==VK_ESCAPE)app->animateSettings(false);else if(wParam==VK_TAB){int ids[]={CloseSettings,ThemeSystem,ThemeLight,ThemeDark,Language,SaveFolder,UpdateApp,ConnectLink};int at=0;for(int i=0;i<8;++i)if(ids[i]==app->settingsKeyboard)at=i;app->settingsKeyboard=ids[(at+((GetKeyState(VK_SHIFT)&0x8000)?7:1))%8];}else if(wParam==VK_RETURN||wParam==VK_SPACE)app->command(app->settingsKeyboard);return 0;}break;
         case WM_TIMER:
+            if(app->settingsCanvas.animationMessage(hwnd,message,wParam))return 0;
             if(wParam==6){app->sheetTick();return 0;}
             if(wParam==7){app->recordingTestTick();return 0;}
             if(wParam==5){KillTimer(hwnd,5);app->saveWindowPosition();return 0;}
@@ -1146,7 +1164,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int show) {
         if(!state.idleTestPath.empty())SetTimer(hwnd,3,1000,nullptr);
         MSG message{}; int value{};
         while ((value = GetMessageW(&message, nullptr, 0, 0)) > 0) {
-            if (!IsDialogMessageW(hwnd, &message)) { TranslateMessage(&message); DispatchMessageW(&message); }
+            if (state.settingsOpen || !IsDialogMessageW(hwnd, &message)) { TranslateMessage(&message); DispatchMessageW(&message); }
         }
         state.recorder.stop(); state.recorder.join();
         RemoveFontResourceExW(fontPath.c_str(), FR_PRIVATE, nullptr);

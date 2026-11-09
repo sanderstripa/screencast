@@ -1,5 +1,7 @@
-# Screencast 0.5.4
+# Screencast 0.5.5
 
-- Fix unselected context menu starting at row -1, which read outside its item list and produced a blank checked row or a crash.
-- Keep no-selection state separate from the keyboard highlight and clamp list viewport indices.
-- Exercise the actual right-click context menu and Enter selection in Windows UI tests and while recording, instead of directly opening settings.
+- Use Torrent Direct2D/DirectWrite drawing code for the complete settings sheet, including text, controls, shadow and hover states.
+- Embed the same Montserrat font and remove native child controls from settings rendering.
+- Keep keyboard, mouse, language, theme, folder selection, updates, link and header dragging available.
+- Verify the visible Windows surface across the sheet after real context-menu opening.
+- Retain recording integration checks for capture continuity while opening and closing settings.
