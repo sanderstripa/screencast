@@ -51,6 +51,47 @@ public:
     bool windowHoverSnapshot{},windowHoverStartSnapshot{},cornersApplied{};
     bool positionReady{},uiTesting{};
     SettingsBackdrop backdrop;
+    std::filesystem::path recordingTestDirectory;
+    int recordingTestStage{},recordingTestRun{};
+    ULONGLONG recordingTestTime{};
+    std::wstring previousTestPath;
+    void recordingTestFailure(std::string const& reason){
+        std::ofstream(recordingTestDirectory/L"recording-ui-error.txt")<<reason;
+        recorder.stop();DestroyWindow(window);PostQuitMessage(1);
+    }
+    void recordingTestTick(){
+        try{
+            auto now=GetTickCount64();
+            if(recordingTestStage==0){
+                saveFolder=recordingTestDirectory.wstring();controls[OutputMode].selected=0;
+                setChecked(Microphone,false);setChecked(Webcam,false);updateLive();
+                start();recordingTestStage=1;recordingTestTime=now;
+            }else if(recordingTestStage==1){
+                if(now-recordingTestTime>15000)throw std::runtime_error("recording did not start");
+                if(!recorder.recording())return;
+                controls[SystemVolume].selected=75;controls[MicVolume].selected=30;
+                setChecked(Denoise,true);controls[NoiseStrength].selected=80;
+                controls[CameraMirror].checked=true;controls[Background].selected=1;controls[BlurStrength].selected=60;updateLive();
+                animateSettings(true);recordingTestStage=2;recordingTestTime=now;
+            }else if(recordingTestStage==2&&now-recordingTestTime>750){
+                if(!settingsOpen||sheetProgress!=1||!recorder.recording())throw std::runtime_error("settings interrupted capture or did not animate open");
+                command(ThemeDark);command(LanguageEnglish);animateSettings(false);recordingTestStage=3;recordingTestTime=now;
+            }else if(recordingTestStage==3&&now-recordingTestTime>1000){
+                if(settingsOpen||sheetProgress!=0||!recorder.recording()||live->systemGain!=.75f||live->micGain!=.3f||!live->cameraMirror)
+                    throw std::runtime_error("settings close interrupted capture or changed live parameters");
+                start();recordingTestStage=4;recordingTestTime=now;
+            }else if(recordingTestStage==4&&now-recordingTestTime>15000)throw std::runtime_error("MP4 finalization timed out");
+        }catch(...){recordingTestFailure(winrt::to_string(errorText()));}
+    }
+    void recordingTestResult(RecordingResult const& result){
+        if(!result.success||std::filesystem::path(result.path).parent_path()!=recordingTestDirectory||!std::filesystem::exists(result.path)||std::filesystem::file_size(result.path)==0||previousTestPath==result.path){recordingTestFailure("MP4 missing, invalid destination or duplicate path");return;}
+        previousTestPath=result.path;
+        if(++recordingTestRun==2){
+            std::ofstream(recordingTestDirectory/L"recording-ui.txt")<<"PASS: two real screen recordings started without file dialogs, live gains/mirror settings retained, settings animated open/closed and theme/language changed while capture continued, MP4 finalization and unique destinations. Physical microphone/camera capture requires hardware.\n";
+            KillTimer(window,7);DestroyWindow(window);return;
+        }
+        recordingTestStage=0;
+    }
     float sheetProgress{},sheetFrom{},sheetTarget{};
     ULONGLONG sheetTime{};
     int sheetOffset()const{return -int(px(548)*(1-sheetProgress));}
@@ -81,7 +122,7 @@ public:
     void animateSettings(bool open){
         if(open&&!settingsOpen){captureBackdrop();settingsOpen=true;}
         sheetFrom=sheetProgress;sheetTarget=open?1.f:0.f;sheetTime=GetTickCount64();
-        if(testing||uiTesting){sheetProgress=sheetTarget;settingsOpen=open;showPage();layoutSettings();return;}
+        if((testing&&recordingTestDirectory.empty())||uiTesting){sheetProgress=sheetTarget;settingsOpen=open;showPage();layoutSettings();return;}
         showPage();SetTimer(window,6,16,nullptr);SetFocus(open?controls[CloseSettings].window:window);
     }
     void sheetTick(){
@@ -492,9 +533,9 @@ public:
         auto saved=SaveDC(dc);SetViewportOrgEx(dc,0,offset,nullptr);
         Gdiplus::Graphics graphics(dc);graphics.SetSmoothingMode(Gdiplus::SmoothingModeAntiAlias);
         Gdiplus::GraphicsPath shape;float w=float(r.right),h=float(px(548)),radius=float(px(12));
-        shape.AddLine(0,0,w,0);shape.AddLine(w,0,w,h-radius);
-        shape.AddArc(w-radius*2,h-radius*2,radius*2,radius*2,0,90);
-        shape.AddLine(w-radius,h,radius,h);shape.AddArc(0,h-radius*2,radius*2,radius*2,90,90);shape.CloseFigure();
+        shape.AddLine(0.f,0.f,w,0.f);shape.AddLine(w,0.f,w,h-radius);
+        shape.AddArc(w-radius*2,h-radius*2,radius*2,radius*2,0.f,90.f);
+        shape.AddLine(w-radius,h,radius,h);shape.AddArc(0.f,h-radius*2,radius*2,radius*2,90.f,90.f);shape.CloseFigure();
         Gdiplus::SolidBrush fill(Gdiplus::Color(255,GetRValue(palette.background),GetGValue(palette.background),GetBValue(palette.background)));graphics.FillPath(&fill,&shape);
         text(dc,L"Настройки",24,18,700,30,title,palette.text);
         text(dc,L"ВНЕШНИЙ ВИД",48,82,800,24,heading,palette.text);
@@ -931,6 +972,7 @@ LRESULT CALLBACK procedure(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam
         }
         case WM_TIMER:
             if(wParam==6){app->sheetTick();return 0;}
+            if(wParam==7){app->recordingTestTick();return 0;}
             if(wParam==5){KillTimer(hwnd,5);app->saveWindowPosition();return 0;}
             if(wParam==4){app->hoverTick();return 0;}
             if(wParam==3) {
@@ -951,6 +993,7 @@ LRESULT CALLBACK procedure(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam
             if(!result->success&&!result->path.empty())app->status=app->tr(L"Доступная часть записи: ")+result->path;
             if (result->success) app->path.clear();
             app->enabled();
+            if(!app->recordingTestDirectory.empty()){app->recordingTestResult(*result);return 0;}
             if (app->closing) DestroyWindow(hwnd);
             else if (!result->success && !result->cancelled) app->notice(result->message + (result->path.empty() ? L"" : L"\n" + result->path));
             return 0;
@@ -962,7 +1005,7 @@ LRESULT CALLBACK procedure(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam
                 app->recorder.stop(); app->enabled(); return 0;
             }
             DestroyWindow(hwnd); return 0;
-        case WM_DESTROY: KillTimer(hwnd, 1);KillTimer(hwnd,4);KillTimer(hwnd,5);KillTimer(hwnd,6); PostQuitMessage(0); return 0;
+        case WM_DESTROY: KillTimer(hwnd, 1);KillTimer(hwnd,4);KillTimer(hwnd,5);KillTimer(hwnd,6);KillTimer(hwnd,7); PostQuitMessage(0); return 0;
         }
     } catch (...) {
         app->notice(errorText());
@@ -978,7 +1021,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int show) {
         int argc{}; auto argv = CommandLineToArgvW(GetCommandLineW(), &argc);
         std::vector<std::wstring> args; for (int i = 0; i < argc; ++i) args.emplace_back(argv[i]); LocalFree(argv);
         std::unique_ptr<SingleInstance> instanceGuard;
-        bool diagnosticMode=args.size()>1 && (args[1]==L"--ui-test" || args[1]==L"--self-test" || args[1]==L"--model-test" || args[1]==L"--camera-test" || args[1]==L"--overlay-test" || args[1]==L"--live-device-test" || args[1]==L"--dropdown-test" || args[1]==L"--idle-paint-test" || args[1]==L"--snapshot-light" || args[1]==L"--snapshot-dark");
+        bool diagnosticMode=args.size()>1 && (args[1]==L"--recording-ui-test" || args[1]==L"--ui-test" || args[1]==L"--self-test" || args[1]==L"--model-test" || args[1]==L"--camera-test" || args[1]==L"--overlay-test" || args[1]==L"--live-device-test" || args[1]==L"--dropdown-test" || args[1]==L"--idle-paint-test" || args[1]==L"--snapshot-light" || args[1]==L"--snapshot-dark");
         if(!diagnosticMode){instanceGuard=std::make_unique<SingleInstance>();if(!instanceGuard->acquire()){Gdiplus::GdiplusShutdown(gdiplus);return 0;}}
         winrt::init_apartment(winrt::apartment_type::single_threaded);
         if(!diagnosticMode)check(SetCurrentProcessExplicitAppUserModelID(L"SanderStripa.Screencast"));
@@ -1051,6 +1094,10 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int show) {
                 initial<<"PASS: loaded installer Theme="<<state.theme<<", English="<<state.english<<" before application UI tests.\n";
             }
             state.uiTest(args[2]);DestroyWindow(hwnd);
+        }
+        if(args.size()>=3&&args[1]==L"--recording-ui-test"){
+            state.recordingTestDirectory=std::filesystem::absolute(args[2]);std::filesystem::create_directories(state.recordingTestDirectory);
+            diagnostics=(state.recordingTestDirectory/L"recording-ui-error.txt").wstring();SetTimer(hwnd,7,50,nullptr);
         }
         if(instanceGuard)instanceGuard->markReady();
         if (!state.snapshotPath.empty()) SetTimer(hwnd, 2, 1000, nullptr);

@@ -77,6 +77,15 @@ jobs:
           $process = Start-Process build/Release/Screencast.exe -ArgumentList '--ui-test', (Join-Path $PWD 'build/smoke') -WindowStyle Hidden -PassThru
           if (-not $process.WaitForExit(30000) -or $process.ExitCode -ne 0) { Get-Content build/smoke/ui-error.txt -ErrorAction SilentlyContinue; throw 'CONNECT UI behavior test failed' }
           Get-Content build/smoke/ui-system.txt
+      - name: Record twice while changing overlay settings
+        shell: pwsh
+        run: |
+          $folder = Join-Path $PWD 'build/smoke/recording-ui'
+          $process = Start-Process build/Release/Screencast.exe -ArgumentList '--recording-ui-test', $folder -WindowStyle Hidden -PassThru
+          if (-not $process.WaitForExit(60000)) { $process.Kill(); throw 'Recording UI integration timed out' }
+          if ($process.ExitCode -ne 0) { Get-Content "$folder/recording-ui-error.txt" -ErrorAction SilentlyContinue; throw 'Recording UI integration failed' }
+          Get-Content "$folder/recording-ui.txt"
+          python tests/verify_recording_ui.py $folder
       - name: Package portable app
         # Rendered snapshots are checked separately; a black image is not a passing UI test.
         run: |

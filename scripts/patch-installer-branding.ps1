@@ -7,7 +7,7 @@ $path=Join-Path $CoreRoot 'adapters/screencast/adapter_windows.go'
 # Product-local adapter keeps this change isolated from all other CONNECT installers.
 Copy-Item -LiteralPath (Join-Path $repo 'installer/screencast-adapter_windows.go') -Destination $path -Force
 $text=[IO.File]::ReadAllText($path)
-$text=[regex]::Replace($text,'Screencast-shell-\d+\.\d+\.\d+\.ico',"Screencast-shell-$Version.ico")
+$text=[regex]::Replace($text,'Screencast-shell-\d+\.\d+\.\d+\.ico','Screencast.ico')
 $hook=@'
 	// Refresh Explorer/Start/taskbar icon caches after replacing product artwork.
 	script += `Add-Type -TypeDefinition 'using System;using System.Runtime.InteropServices;public static class ScreencastIconRefresh{[DllImport("shell32.dll")] public static extern void SHChangeNotify(uint e,uint f,IntPtr a,IntPtr b);}';[ScreencastIconRefresh]::SHChangeNotify(0x08000000,0,[IntPtr]::Zero,[IntPtr]::Zero);`
