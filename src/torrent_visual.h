@@ -33,7 +33,7 @@ inline bool capture(HWND w,wchar_t const* path){RECT r;GetClientRect(w,&r);HDC d
  ComPtr<IWICImagingFactory> f;ComPtr<IWICBitmap> source;ComPtr<IWICStream> stream;ComPtr<IWICBitmapEncoder> encoder;ComPtr<IWICBitmapFrameEncode> frame;
  HRESULT hr=CoCreateInstance(CLSID_WICImagingFactory,nullptr,CLSCTX_INPROC_SERVER,IID_PPV_ARGS(&f));if(SUCCEEDED(hr))hr=f->CreateBitmapFromHBITMAP(bitmap,nullptr,WICBitmapIgnoreAlpha,&source);if(SUCCEEDED(hr))hr=f->CreateStream(&stream);if(SUCCEEDED(hr))hr=stream->InitializeFromFilename(path,GENERIC_WRITE);if(SUCCEEDED(hr))hr=f->CreateEncoder(GUID_ContainerFormatPng,nullptr,&encoder);if(SUCCEEDED(hr))hr=encoder->Initialize(stream.Get(),WICBitmapEncoderNoCache);if(SUCCEEDED(hr))hr=encoder->CreateNewFrame(&frame,nullptr);if(SUCCEEDED(hr))hr=frame->Initialize(nullptr);if(SUCCEEDED(hr))hr=frame->WriteSource(source.Get(),nullptr);if(SUCCEEDED(hr))hr=frame->Commit();if(SUCCEEDED(hr))hr=encoder->Commit();DeleteObject(bitmap);return drawn&&SUCCEEDED(hr);}
 struct Canvas {
- ComPtr<ID2D1Factory> factory;ComPtr<IDWriteFactory> writing;ComPtr<ID2D1DCRenderTarget> rt;ComPtr<ID2D1SolidColorBrush> ink;
+ ComPtr<ID2D1Factory> factory;ComPtr<IDWriteFactory> writing;ComPtr<ID2D1RenderTarget> rt;ComPtr<ID2D1DCRenderTarget> dcTarget;ComPtr<ID2D1SolidColorBrush> ink;
  ComPtr<ID2D1PathGeometry> settingsGeometry;
  ComPtr<ID2D1PathGeometry> themeGeometry[3];ComPtr<ID2D1StrokeStyle> themeStroke;
  std::map<int,ComPtr<IDWriteTextFormat>> fonts;bool dark=false;float width=0,height=0,scale=1;
@@ -47,9 +47,9 @@ struct Canvas {
  if(!factory)D2D1CreateFactory(D2D1_FACTORY_TYPE_SINGLE_THREADED,factory.GetAddressOf());
  if(!writing)DWriteCreateFactory(DWRITE_FACTORY_TYPE_SHARED,__uuidof(IDWriteFactory),reinterpret_cast<IUnknown**>(writing.GetAddressOf()));
  if(!factory||!writing)return false;
- if(!rt){auto props=D2D1::RenderTargetProperties(D2D1_RENDER_TARGET_TYPE_DEFAULT,D2D1::PixelFormat(DXGI_FORMAT_B8G8R8A8_UNORM,D2D1_ALPHA_MODE_IGNORE));factory->CreateDCRenderTarget(&props,&rt);if(!rt)return false;rt->CreateSolidColorBrush(D2D1::ColorF(0),&ink);}
- if(FAILED(rt->BindDC(dc,&rect)))return false;productFont.load(writing.Get());rt->SetDpi(float(dpi),float(dpi));rt->BeginDraw();return true;}
- void end(){if(rt->EndDraw()==D2DERR_RECREATE_TARGET){ink.Reset();rt.Reset();}}
+ if(!dcTarget){auto props=D2D1::RenderTargetProperties(D2D1_RENDER_TARGET_TYPE_DEFAULT,D2D1::PixelFormat(DXGI_FORMAT_B8G8R8A8_UNORM,D2D1_ALPHA_MODE_IGNORE));factory->CreateDCRenderTarget(&props,&dcTarget);if(!dcTarget)return false;rt=dcTarget;rt->CreateSolidColorBrush(D2D1::ColorF(0),&ink);}
+ if(FAILED(dcTarget->BindDC(dc,&rect)))return false;productFont.load(writing.Get());rt->SetDpi(float(dpi),float(dpi));rt->BeginDraw();return true;}
+ void end(){if(rt->EndDraw()==D2DERR_RECREATE_TARGET){ink.Reset();rt.Reset();dcTarget.Reset();}}
  void color(UINT c){ink->SetColor(D2D1::ColorF(c));}
  void box(D2D1_RECT_F r,UINT c,float radius=ui::radius,UINT border=0){color(c);auto shape=D2D1::RoundedRect(r,radius,radius);rt->FillRoundedRectangle(shape,ink.Get());if(border){color(border);rt->DrawRoundedRectangle(shape,ink.Get(),1);}}
  void gradient(D2D1_RECT_F r,UINT top,UINT bottom,float radius=9){D2D1_GRADIENT_STOP stops[]={{0,D2D1::ColorF(top)},{1,D2D1::ColorF(bottom)}};ComPtr<ID2D1GradientStopCollection> collection;ComPtr<ID2D1LinearGradientBrush> gradientBrush;ComPtr<ID2D1RoundedRectangleGeometry> shape;rt->CreateGradientStopCollection(stops,2,&collection);if(!collection)return;rt->CreateLinearGradientBrush(D2D1::LinearGradientBrushProperties(D2D1::Point2F(r.left,r.top),D2D1::Point2F(r.left,r.bottom)),collection.Get(),&gradientBrush);factory->CreateRoundedRectangleGeometry(D2D1::RoundedRect(r,radius,radius),&shape);if(gradientBrush&&shape)rt->FillGeometry(shape.Get(),gradientBrush.Get());}

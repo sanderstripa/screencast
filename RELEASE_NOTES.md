@@ -1,7 +1,6 @@
-# Screencast 0.5.5
+# Screencast 0.5.6
 
-- Use Torrent Direct2D/DirectWrite drawing code for the complete settings sheet, including text, controls, shadow and hover states.
-- Embed the same Montserrat font and remove native child controls from settings rendering.
-- Keep keyboard, mouse, language, theme, folder selection, updates, link and header dragging available.
-- Verify the visible Windows surface across the sheet after real context-menu opening.
-- Retain recording integration checks for capture continuity while opening and closing settings.
+- Cache the blurred background upload and rasterize the complete moving sheet into one transparent Direct2D layer per transition.
+- Animation frames draw two cached bitmaps instead of allocating/uploading a full-window DIB and redrawing text and 24 shadow layers.
+- Remove hidden control movement, visibility updates and synchronous whole-window child repaint from animation ticks.
+- Keep 220ms cubic easing and invalidate caches on theme, window size and DPI changes.

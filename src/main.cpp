@@ -76,10 +76,12 @@ public:
                 contextMenuTesting=true;POINT menuPoint{px(300),px(32)};ClientToScreen(window,&menuPoint);contextMenu(MAKELPARAM(menuPoint.x,menuPoint.y));contextMenuTesting=false;recordingTestStage=2;recordingTestTime=now;
             }else if(recordingTestStage==2&&now-recordingTestTime>750){
                 if(!settingsOpen||sheetProgress!=1||!recorder.recording())throw std::runtime_error("settings interrupted capture or did not animate open");
+                BOOL motion=TRUE;SystemParametersInfoW(SPI_GETCLIENTAREAANIMATION,0,&motion,0);if(motion&&(animationLayerBuilds!=1||animationFrames<2))throw std::runtime_error("opening animation did not reuse its cached layer");
                 command(ThemeDark);command(LanguageEnglish);animateSettings(false);recordingTestStage=3;recordingTestTime=now;
             }else if(recordingTestStage==3&&now-recordingTestTime>1000){
                 if(settingsOpen||sheetProgress!=0||!recorder.recording()||live->systemGain!=.75f||live->micGain!=.3f||!live->cameraMirror)
                     throw std::runtime_error("settings close interrupted capture or changed live parameters");
+                BOOL motion=TRUE;SystemParametersInfoW(SPI_GETCLIENTAREAANIMATION,0,&motion,0);if(motion&&(animationLayerBuilds!=1||animationFrames<2))throw std::runtime_error("closing animation did not reuse its cached layer");
                 start();recordingTestStage=4;recordingTestTime=now;
             }else if(recordingTestStage==4&&now-recordingTestTime>15000)throw std::runtime_error("MP4 finalization timed out");
         }catch(...){recordingTestFailure(winrt::to_string(errorText()));}
@@ -115,6 +117,7 @@ public:
         }
     }
     void captureBackdrop(){
+        settingsBackground.Reset();settingsLayer.Reset();
         RECT r{};GetClientRect(window,&r);auto dc=GetDC(window);
         backdrop.capture(dc,r.right,r.bottom,[&](HDC back){renderWorking(back);},dark);ReleaseDC(window,dc);
     }
@@ -128,6 +131,7 @@ public:
     std::map<int,POINT> settingsPositions;
     void animateSettings(bool open){
         if(open&&!settingsOpen){captureBackdrop();settingsOpen=true;}
+        settingsLayer.Reset();animationLayerBuilds=0;animationFrames=0;
         sheetFrom=sheetProgress;sheetTarget=open?1.f:0.f;sheetTime=GetTickCount64();
         if((testing&&recordingTestDirectory.empty())||uiTesting){sheetProgress=sheetTarget;settingsOpen=open;showPage();layoutSettings();return;}
         layoutSettings();showPage();
@@ -139,9 +143,9 @@ public:
     void sheetTick(){
         BOOL motion=TRUE;SystemParametersInfoW(SPI_GETCLIENTAREAANIMATION,0,&motion,0);
         float t=motion?std::min(1.f,float(GetTickCount64()-sheetTime)/220.f):1.f;
-        sheetProgress=sheetFrom+(sheetTarget-sheetFrom)*(1-std::pow(1-t,3.f));layoutSettings();showPage();
+        sheetProgress=sheetFrom+(sheetTarget-sheetFrom)*(1-std::pow(1-t,3.f));
         if(t>=1){KillTimer(window,6);if(sheetTarget==0){settingsOpen=false;showPage();layoutSettings();backdrop.reset();}}
-        RedrawWindow(window,nullptr,nullptr,RDW_INVALIDATE|RDW_ALLCHILDREN|RDW_UPDATENOW);
+        InvalidateRect(window,nullptr,FALSE);
     }
     bool contextMenuTesting{};
     void contextMenu(LPARAM point){
@@ -539,10 +543,12 @@ public:
     }
     void paint(HDC dc){
         if(!settingsOpen){paintWorking(dc);return;}
-        RECT r{};GetClientRect(window,&r);FillRect(dc,&r,brush);backdrop.paint(dc,r.right,r.bottom);
+        RECT r{};GetClientRect(window,&r);if(!settingsBackground){FillRect(dc,&r,brush);backdrop.paint(dc,r.right,r.bottom);}
         drawTorrentSettings(dc,r);
     }
     visual::Canvas settingsCanvas;
+    ComPtr<ID2D1Bitmap> settingsBackground,settingsLayer;
+    unsigned animationLayerBuilds{},animationFrames{};
     int settingsHover=-1,settingsKeyboard=CloseSettings;
     RECT settingRect(int id)const{
         auto point=settingsPositions.at(id);RECT size{};GetClientRect(controls.at(id).window,&size);
@@ -553,15 +559,29 @@ public:
         POINT p{x,y};for(auto const& [id,c]:controls)if(settingControl(id)){auto r=settingRect(id);if(PtInRect(&r,p))return id;}return -1;
     }
     void drawTorrentSettings(HDC dc,RECT area){
-        // Seed Direct2D with the cached working surface, then draw the complete sheet.
-        auto memory=CreateCompatibleDC(dc);BITMAPINFO info{};info.bmiHeader.biSize=sizeof(BITMAPINFOHEADER);info.bmiHeader.biWidth=area.right;info.bmiHeader.biHeight=-area.bottom;info.bmiHeader.biPlanes=1;info.bmiHeader.biBitCount=32;
-        void* pixels{};auto bitmap=CreateDIBSection(dc,&info,DIB_RGB_COLORS,&pixels,nullptr,0);auto old=SelectObject(memory,bitmap);BitBlt(memory,0,0,area.right,area.bottom,dc,0,0,SRCCOPY);GdiFlush();
         auto& c=settingsCanvas;c.dark=dark;
         if(c.beginDC(window,dc,area,dpi)){
-            ComPtr<ID2D1Bitmap> background;
-            c.rt->CreateBitmap(D2D1::SizeU(area.right,area.bottom),pixels,area.right*4,D2D1::BitmapProperties(D2D1::PixelFormat(DXGI_FORMAT_B8G8R8A8_UNORM,D2D1_ALPHA_MODE_IGNORE),float(dpi),float(dpi)),&background);
-            if(background)c.rt->DrawBitmap(background.Get(),D2D1::RectF(0,0,c.width,c.height));
-            float left=float(sheetLeft())/c.scale,right=left+720,offset=float(sheetOffset())/c.scale;
+            if(!settingsBackground){
+                auto memory=CreateCompatibleDC(dc);BITMAPINFO info{};info.bmiHeader.biSize=sizeof(BITMAPINFOHEADER);info.bmiHeader.biWidth=area.right;info.bmiHeader.biHeight=-area.bottom;info.bmiHeader.biPlanes=1;info.bmiHeader.biBitCount=32;
+                void* pixels{};auto bitmap=CreateDIBSection(dc,&info,DIB_RGB_COLORS,&pixels,nullptr,0);auto old=SelectObject(memory,bitmap);BitBlt(memory,0,0,area.right,area.bottom,dc,0,0,SRCCOPY);GdiFlush();
+                c.rt->CreateBitmap(D2D1::SizeU(area.right,area.bottom),pixels,area.right*4,D2D1::BitmapProperties(D2D1::PixelFormat(DXGI_FORMAT_B8G8R8A8_UNORM,D2D1_ALPHA_MODE_IGNORE),float(dpi),float(dpi)),&settingsBackground);
+                SelectObject(memory,old);DeleteObject(bitmap);DeleteDC(memory);
+            }
+            if(settingsBackground)c.rt->DrawBitmap(settingsBackground.Get(),D2D1::RectF(0,0,c.width,c.height));
+            bool moving=sheetProgress!=sheetTarget;
+            if(moving&&settingsLayer){
+                ++animationFrames;
+                c.rt->SetTransform(D2D1::Matrix3x2F::Translation(0,float(sheetOffset())/c.scale));
+                c.rt->DrawBitmap(settingsLayer.Get(),D2D1::RectF(0,0,c.width,c.height));
+                c.rt->SetTransform(D2D1::Matrix3x2F::Identity());c.end();return;
+            }
+            ComPtr<ID2D1BitmapRenderTarget> layerTarget;
+            auto destination=c.rt;
+            auto layerSize=D2D1::SizeF(c.width,c.height);auto layerPixels=D2D1::SizeU(area.right,area.bottom);auto layerFormat=D2D1::PixelFormat(DXGI_FORMAT_B8G8R8A8_UNORM,D2D1_ALPHA_MODE_PREMULTIPLIED);
+            if(moving&&SUCCEEDED(c.rt->CreateCompatibleRenderTarget(&layerSize,&layerPixels,&layerFormat,D2D1_COMPATIBLE_RENDER_TARGET_OPTIONS_NONE,&layerTarget))){
+                c.rt=layerTarget;c.rt->BeginDraw();c.rt->Clear(D2D1::ColorF(0,0.f));++animationLayerBuilds;
+            }
+            float left=float(sheetLeft())/c.scale,right=left+720,offset=layerTarget?0.f:float(sheetOffset())/c.scale;
             c.rt->SetTransform(D2D1::Matrix3x2F::Translation(left,offset));
             for(int i=24;i>0;--i){c.color(0);c.ink->SetOpacity(dark?.012f:.009f);c.rt->FillRoundedRectangle(D2D1::RoundedRect(D2D1::RectF(-i*.7f,8,720+i*.7f,566.f+i),14,14),c.ink.Get());}c.ink->SetOpacity(1);
             UINT surface=dark?0x202124:0xfcfcfd,field=dark?0x28292d:0xf3f4f5,line=dark?0x35363b:0xe6e7e9;
@@ -579,9 +599,13 @@ public:
             c.label(t(L"MP4 сохраняются автоматически с датой и временем.",L"MP4 files are saved automatically with date and time."),D2D1::RectF(28,320,692,356),12,false,c.muted());
             heading(t(L"О Screencast",L"About Screencast"),370);c.label(t(L"Версия Screencast",L"Screencast version"),D2D1::RectF(28,405,542,432),13);c.label(SCREENCAST_VERSION_W,D2D1::RectF(542,405,692,432),13,false,0,DWRITE_TEXT_ALIGNMENT_TRAILING);c.line(28,434,692,434,line,1);c.label(t(L"Разработчик",L"Developer"),D2D1::RectF(28,436,512,463),13);c.label(L"Sander Stripa",D2D1::RectF(512,436,692,463),13,false,c.muted(),DWRITE_TEXT_ALIGNMENT_TRAILING);c.button(t(L"Обновить",L"Update"),rect(UpdateApp),false,settingsHover==UpdateApp);
             c.label(L"by connect.",rect(ConnectLink),11,false,settingsHover==ConnectLink?(dark?0xb6b7bd:0x55585d):c.muted(),DWRITE_TEXT_ALIGNMENT_CENTER);
-            c.rt->SetTransform(D2D1::Matrix3x2F::Identity());c.end();
+            c.rt->SetTransform(D2D1::Matrix3x2F::Identity());
+            if(layerTarget){
+                auto result=c.rt->EndDraw();if(SUCCEEDED(result))layerTarget->GetBitmap(&settingsLayer);c.rt=destination;
+                if(settingsLayer){c.rt->SetTransform(D2D1::Matrix3x2F::Translation(0,float(sheetOffset())/c.scale));c.rt->DrawBitmap(settingsLayer.Get(),D2D1::RectF(0,0,c.width,c.height));c.rt->SetTransform(D2D1::Matrix3x2F::Identity());}
+            }
+            c.end();if(!c.rt){settingsLayer.Reset();settingsBackground.Reset();}
         }
-        SelectObject(memory,old);DeleteObject(bitmap);DeleteDC(memory);
     }
     void paintWorking(HDC dc) {
         RECT r{}; GetClientRect(window, &r); FillRect(dc, &r, brush);
@@ -965,7 +989,7 @@ LRESULT CALLBACK procedure(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam
         switch (message) {
         case WM_CREATE: app->window = hwnd;SetWindowLongPtrW(hwnd,GWLP_USERDATA,reinterpret_cast<LONG_PTR>(app));app->create(); return 0;
         case WM_NCCALCSIZE:return 0;
-        case WM_SIZE:app->layoutChrome();break;
+        case WM_SIZE:app->settingsBackground.Reset();app->settingsLayer.Reset();app->layoutChrome();break;
         case WM_MOVE:
             if(app->positionReady&&!app->testing&&!IsIconic(hwnd))SetTimer(hwnd,5,400,nullptr);
             break;
@@ -1011,7 +1035,7 @@ LRESULT CALLBACK procedure(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam
         case WM_ERASEBKGND: return 1;
         case WM_SETTINGCHANGE: if (!app->theme) app->applyTheme(); return 0;
         case WM_DPICHANGED: {
-            int old = app->dpi; app->dpi = HIWORD(wParam); app->fonts();
+            app->settingsBackground.Reset();app->settingsLayer.Reset();int old = app->dpi; app->dpi = HIWORD(wParam); app->fonts();
             app->scroll = MulDiv(app->scroll, app->dpi, old);
             for (auto const& [id, c] : app->controls) {
                 RECT r{}; GetWindowRect(c.window, &r); MapWindowPoints(nullptr, hwnd, reinterpret_cast<POINT*>(&r), 2);
