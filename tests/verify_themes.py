@@ -25,14 +25,15 @@ for name,expected in (("light",(255,255,255)),("dark",(8,9,11))):
     settings=load("-settings");settings_en=load("-settings-en")
     assert settings.shape==image.shape
     assert np.array_equal(settings,load("-settings-focus"))
-    for top,bottom,left,right in ((18,48,24,300),(126,162,306,776),(174,210,306,616),(292,328,766,952),(422,458,766,952),(494,522,420,580)):
-        assert np.ptp(settings[top:bottom,left:right])>25,"Missing settings content"
-    assert not np.array_equal(settings[82:480,24:952],settings_en[82:480,24:952]),"Settings translation missing"
+    left=(image.shape[1]-720)//2
+    surface=np.array((32,33,36) if name=="dark" else (252,252,253))
+    assert np.max(abs(settings[8,left+30].astype(int)-surface))<=1,"Sheet not attached to top"
+    for top,bottom,x1,x2 in ((13,52,28,300),(100,134,422,692),(184,220,422,692),(274,310,422,692),(405,463,28,692),(528,552,316,404)):
+        assert np.ptp(settings[top:bottom,left+x1:left+x2])>25,"Missing Torrent-style settings content"
+    assert not np.array_equal(settings[82:480,left:left+720],settings_en[82:480,left:left+720]),"Settings translation missing"
     assert not np.array_equal(image[100:522,24:976],load("-en")[100:522,24:976]),"Main translation missing"
-    # The lower visible working interface is blurred and dimmed under a full-width top sheet.
-    assert not np.array_equal(image[560:616,24:976],settings[560:616,24:976]),"Backdrop absent"
-    assert np.std(settings[560:616,24:976])>1,"Backdrop is a blank fill"
-    assert np.max(abs(settings[8,8].astype(int)-expected))<=1,"Sheet not attached to top"
+    assert not np.array_equal(image[590:640,24:976],settings[590:640,24:976]),"Backdrop absent"
+    assert np.std(settings[590:640,24:976])>1,"Backdrop is a blank fill"
     dropdown=load("-dropdown")
     assert not np.array_equal(image[160:274,336:636],dropdown[160:274,336:636]),"Dropdown missing"
     print(f"{name}: palette, three columns, gear removal, rose hover animation, settings and blurred backdrop verified")

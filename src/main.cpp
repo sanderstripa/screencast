@@ -94,7 +94,11 @@ public:
     }
     float sheetProgress{},sheetFrom{},sheetTarget{};
     ULONGLONG sheetTime{};
-    int sheetOffset()const{return -int(px(548)*(1-sheetProgress));}
+    int sheetOffset()const{return -int(px(592)*(1-sheetProgress));}
+    int sheetLeft()const{RECT r{};GetClientRect(window,&r);return (r.right-px(720))/2;}
+    COLORREF sheetSurface()const{return dark?RGB(32,33,36):RGB(252,252,253);}
+    COLORREF sheetField()const{return dark?RGB(40,41,45):RGB(243,244,245);}
+    COLORREF sheetLine()const{return dark?RGB(53,54,59):RGB(230,231,233);}
     void openExternal(wchar_t const* url){
         if(reinterpret_cast<INT_PTR>(ShellExecuteW(window,L"open",url,nullptr,nullptr,SW_SHOWNORMAL))<=32)
             notice(L"Не удалось открыть браузер");
@@ -116,7 +120,7 @@ public:
     void layoutSettings(){
         for(auto const& [id,c]:controls)if(settingControl(id)){
             auto point=settingsPositions.at(id);RECT area{};GetClientRect(window,&area);
-            int x=id==CloseSettings?area.right-px(54):px(point.x);
+            int x=sheetLeft()+px(point.x);
             SetWindowPos(c.window,nullptr,x,px(point.y)+(settingsOpen?sheetOffset():0),0,0,SWP_NOSIZE|SWP_NOZORDER|SWP_NOACTIVATE|SWP_NOCOPYBITS);
         }
     }
@@ -126,6 +130,7 @@ public:
         sheetFrom=sheetProgress;sheetTarget=open?1.f:0.f;sheetTime=GetTickCount64();
         if((testing&&recordingTestDirectory.empty())||uiTesting){sheetProgress=sheetTarget;settingsOpen=open;showPage();layoutSettings();return;}
         layoutSettings();showPage();
+        if(!open)for(auto const& [id,c]:controls)if(settingControl(id))ShowWindow(c.window,SW_HIDE);
         RedrawWindow(window,nullptr,nullptr,RDW_INVALIDATE|RDW_ALLCHILDREN|RDW_UPDATENOW);
         // Start the clock after backdrop capture, visibility changes and the first paint.
         sheetTime=GetTickCount64();SetTimer(window,6,16,nullptr);SetFocus(open?controls[CloseSettings].window:window);
@@ -133,7 +138,7 @@ public:
     void sheetTick(){
         BOOL motion=TRUE;SystemParametersInfoW(SPI_GETCLIENTAREAANIMATION,0,&motion,0);
         float t=motion?std::min(1.f,float(GetTickCount64()-sheetTime)/220.f):1.f;
-        sheetProgress=sheetFrom+(sheetTarget-sheetFrom)*(1-std::pow(1-t,3.f));layoutSettings();
+        sheetProgress=sheetFrom+(sheetTarget-sheetFrom)*(1-std::pow(1-t,3.f));layoutSettings();showPage();
         if(t>=1){KillTimer(window,6);if(sheetTarget==0){settingsOpen=false;showPage();layoutSettings();backdrop.reset();}}
         RedrawWindow(window,nullptr,nullptr,RDW_INVALIDATE|RDW_ALLCHILDREN|RDW_UPDATENOW);
     }
@@ -141,9 +146,10 @@ public:
         if(settingsOpen)return;
         POINT p{GET_X_LPARAM(point),GET_Y_LPARAM(point)};
         if(p.x==-1&&p.y==-1){GetCursorPos(&p);}
-        auto menu=CreatePopupMenu();AppendMenuW(menu,MF_STRING,OpenSettings,tr(L"Настройки").c_str());
-        int picked=TrackPopupMenu(menu,TPM_RETURNCMD|TPM_RIGHTBUTTON,p.x,p.y,0,window,nullptr);DestroyMenu(menu);
-        if(picked==OpenSettings)animateSettings(true);
+        std::vector<std::wstring> items{tr(L"Настройки")};
+        Dropdown menu(items,font,dpi,-1,dark?RGB(17,18,21):RGB(252,252,253),palette.text,palette.line,palette.hover);
+        RECT anchor{p.x,p.y,p.x+px(260),p.y};
+        if(menu.show(window,anchor)==1)animateSettings(true);
     }
     void saveWindowPosition(){if(positionReady&&!testing)windowPosition::save(window,preferencesKey.c_str());}
     std::wstring saveFolder;
@@ -296,6 +302,7 @@ public:
         SetScrollInfo(window, SB_VERT, &info, TRUE);
     }
     void reveal(int id) {
+        if(settingsOpen)return;
         auto found = controls.find(id); if (found == controls.end()) return;
         RECT r{}, client{}; GetWindowRect(found->second.window, &r); GetClientRect(window, &client);
         MapWindowPoints(nullptr, window, reinterpret_cast<POINT*>(&r), 2);
@@ -323,7 +330,7 @@ public:
                 OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY, DEFAULT_PITCH, L"Montserrat");
         };
         font = make(13, FW_NORMAL); smallFont = make(11, FW_NORMAL);
-        heading = make(12, FW_MEDIUM); title = make(18, FW_MEDIUM);
+        heading = make(13, FW_MEDIUM); title = make(18, FW_MEDIUM);
     }
     void add(int id, Kind kind, std::wstring label, int x, int y, int w, int h) {
         auto hwnd = CreateWindowExW(0, L"BUTTON", label.c_str(), WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_OWNERDRAW | BS_NOTIFY,
@@ -440,7 +447,7 @@ public:
     }
     bool settingControl(int id)const{return (id>=ThemeSystem&&id<=ThemeDark)||id==Language||id==LanguageEnglish||id==SaveFolder||id==CloseSettings||id==UpdateApp||id==ConnectLink;}
     void showPage(){
-        for(auto& [id,c]:controls)ShowWindow(c.window,(settingsOpen?settingControl(id):!settingControl(id))?SW_SHOW:SW_HIDE);
+        for(auto& [id,c]:controls)ShowWindow(c.window,(settingsOpen?(settingControl(id)&&sheetProgress==1):!settingControl(id))?SW_SHOW:SW_HIDE);
         InvalidateRect(window,nullptr,FALSE);
     }
     void changeLanguage(bool value){english=value;for(auto& [id,c]:controls)updateText(id);savePreferences();InvalidateRect(window,nullptr,FALSE);}
@@ -462,15 +469,15 @@ public:
         dpi = GetDpiForWindow(window); fonts();
         add(Minimize,Kind::Segment,L"Свернуть",912,16,32,32);
         add(Close,Kind::Segment,L"Закрыть",948,16,32,32);
-        add(CloseSettings,Kind::Segment,L"Закрыть",948,16,32,32);
-        add(ThemeSystem,Kind::Segment,L"Системная",306,126,150,36);
-        add(ThemeLight,Kind::Segment,L"Светлая",466,126,150,36);
-        add(ThemeDark,Kind::Segment,L"Тёмная",626,126,150,36);
-        add(Language,Kind::Segment,L"Русский",306,174,150,36);
-        add(LanguageEnglish,Kind::Segment,L"English",466,174,150,36);
-        add(SaveFolder,Kind::Button,L"Выбрать папку…",766,292,186,36);
-        add(UpdateApp,Kind::Button,L"Обновить",766,422,186,36);
-        add(ConnectLink,Kind::Segment,L"by connect.",420,494,160,28);
+        add(CloseSettings,Kind::Segment,L"Закрыть",670,16,32,32);
+        add(ThemeSystem,Kind::Segment,L"Системная",422,100,90,34);
+        add(ThemeLight,Kind::Segment,L"Светлая",512,100,90,34);
+        add(ThemeDark,Kind::Segment,L"Тёмная",602,100,90,34);
+        add(Language,Kind::Choice,L"Язык интерфейса",422,184,270,36);
+        setItems(Language,{L"Русский",L"English"});
+        add(SaveFolder,Kind::Button,L"Выбрать",602,274,90,36);
+        add(UpdateApp,Kind::Button,L"Обновить",580,466,112,36);
+        add(ConnectLink,Kind::Segment,L"by connect.",316,528,88,24);
         add(SourceKind,Kind::Choice,L"Источник",24,128,178,34);setItems(SourceKind,{L"Запись экрана",L"Отдельное окно"});
         add(Refresh,Kind::Button,L"Обновить",214,128,96,34);
         add(Source,Kind::Choice,L"Экран / окно",24,172,286,34);
@@ -531,38 +538,42 @@ public:
     void paint(HDC dc){
         if(!settingsOpen){paintWorking(dc);return;}
         RECT r{};GetClientRect(window,&r);FillRect(dc,&r,brush);backdrop.paint(dc,r.right,r.bottom);
-        int offset=sheetOffset();
-        // Only the bottom edge is rounded: the sheet begins at the window's top edge.
-        {
-            Gdiplus::Graphics shadow(dc);
-            for(int i=0;i<px(18);++i){
-                float fade=1-float(i)/px(18);Gdiplus::SolidBrush ink(Gdiplus::Color(BYTE(38*fade*fade),0,0,0));
-                shadow.FillRectangle(&ink,0,offset+px(548)+i,r.right,1);
+        int offset=sheetOffset(),left=sheetLeft();
+        auto saved=SaveDC(dc);SetViewportOrgEx(dc,left,offset,nullptr);
+        Gdiplus::Graphics g(dc);g.SetSmoothingMode(Gdiplus::SmoothingModeAntiAlias);
+        auto box=[&](int x,int y,int w,int h,COLORREF color,int radius){
+            auto pen=CreatePen(PS_SOLID,1,color);auto fill=CreateSolidBrush(color);
+            auto p=SelectObject(dc,pen),b=SelectObject(dc,fill);RoundRect(dc,px(x),px(y),px(x+w),px(y+h),px(radius*2),px(radius*2));SelectObject(dc,p);SelectObject(dc,b);DeleteObject(pen);DeleteObject(fill);
+        };
+        for(int i=24;i>0;--i){Gdiplus::SolidBrush shadow(Gdiplus::Color(BYTE(dark?3:2),0,0,0));float x=-px(i)*.7f,y=float(px(8)),w=px(720)+px(i)*1.4f,h=float(px(558+i)),radius=float(px(14));Gdiplus::GraphicsPath path;path.AddArc(x,y,radius*2,radius*2,180,90);path.AddArc(x+w-radius*2,y,radius*2,radius*2,270,90);path.AddArc(x+w-radius*2,y+h-radius*2,radius*2,radius*2,0,90);path.AddArc(x,y+h-radius*2,radius*2,radius*2,90,90);path.CloseFigure();g.FillPath(&shadow,&path);}
+        box(0,-14,720,574,sheetSurface(),14);
+        auto label=[&](std::wstring const& value,int x,int y,int w,int h,HFONT face,COLORREF color,UINT flags=DT_LEFT){text(dc,value,x,y,w,h,face,color,flags|DT_SINGLELINE|DT_VCENTER|DT_END_ELLIPSIS);};
+        auto rule=[&](int y){auto pen=CreatePen(PS_SOLID,1,sheetLine());auto old=SelectObject(dc,pen);MoveToEx(dc,px(28),px(y),nullptr);LineTo(dc,px(692),px(y));SelectObject(dc,old);DeleteObject(pen);};
+        auto section=[&](std::wstring const& value,int y){label(value,28,y,664,28,heading,palette.text);rule(y+31);};
+        auto large=CreateFontW(-px(20),0,0,0,FW_MEDIUM,FALSE,FALSE,FALSE,DEFAULT_CHARSET,OUT_DEFAULT_PRECIS,CLIP_DEFAULT_PRECIS,CLEARTYPE_QUALITY,DEFAULT_PITCH,L"Montserrat");
+        label(english?L"Settings":L"Настройки",28,13,624,39,large,palette.text);DeleteObject(large);
+        section(english?L"Appearance":L"Внешний вид",60);
+        label(english?L"Theme":L"Тема",28,100,384,34,font,palette.text);
+        box(419,97,276,40,sheetField(),8);
+        section(english?L"Interface language":L"Язык интерфейса",146);
+        section(english?L"Recording storage":L"Сохранение записи",234);
+        label(english?L"Recording folder":L"Папка записи",28,274,384,36,font,palette.text);
+        box(422,274,170,36,sheetField(),7);
+        label(saveFolder,432,274,150,36,smallFont,palette.muted);
+        label(english?L"MP4 files are saved automatically with date and time.":L"MP4 сохраняются автоматически с датой и временем.",28,320,664,36,font,palette.muted);
+        section(english?L"About Screencast":L"О Screencast",370);
+        label(english?L"Screencast version":L"Версия Screencast",28,405,514,27,font,palette.text);
+        label(SCREENCAST_VERSION_W,542,405,150,27,font,palette.text,DT_RIGHT);rule(434);
+        label(english?L"Developer":L"Разработчик",28,436,484,27,font,palette.text);
+        label(L"Sander Stripa",512,436,180,27,font,palette.muted,DT_RIGHT);
+        RestoreDC(dc,saved);
+        if(sheetProgress<1){
+            for(auto const& [id,c]:controls)if(settingControl(id)){
+                RECT r{};GetWindowRect(c.window,&r);MapWindowPoints(nullptr,window,reinterpret_cast<POINT*>(&r),2);
+                auto state=SaveDC(dc);SetViewportOrgEx(dc,r.left,r.top,nullptr);IntersectClipRect(dc,0,0,r.right-r.left,r.bottom-r.top);
+                DRAWITEMSTRUCT item{};item.CtlID=id;item.hDC=dc;item.rcItem={0,0,r.right-r.left,r.bottom-r.top};draw(item);RestoreDC(dc,state);
             }
         }
-        auto saved=SaveDC(dc);SetViewportOrgEx(dc,0,offset,nullptr);
-        Gdiplus::Graphics graphics(dc);graphics.SetSmoothingMode(Gdiplus::SmoothingModeAntiAlias);
-        Gdiplus::GraphicsPath shape;float w=float(r.right),h=float(px(548)),radius=float(px(12));
-        shape.AddLine(0.f,0.f,w,0.f);shape.AddLine(w,0.f,w,h-radius);
-        shape.AddArc(w-radius*2,h-radius*2,radius*2,radius*2,0.f,90.f);
-        shape.AddLine(w-radius,h,radius,h);shape.AddArc(0.f,h-radius*2,radius*2,radius*2,90.f,90.f);shape.CloseFigure();
-        Gdiplus::SolidBrush fill(Gdiplus::Color(255,GetRValue(palette.background),GetGValue(palette.background),GetBValue(palette.background)));graphics.FillPath(&fill,&shape);
-        text(dc,L"Настройки",24,18,700,30,title,palette.text);
-        text(dc,L"ВНЕШНИЙ ВИД",48,82,800,24,heading,palette.text);
-        text(dc,L"Тема",48,126,240,36,font,palette.text);
-        text(dc,L"Язык интерфейса",48,174,240,36,font,palette.text);
-        line(dc,232);
-        text(dc,L"СОХРАНЕНИЕ ЗАПИСЕЙ",48,250,800,24,heading,palette.text);
-        text(dc,L"Папка сохранения MP4",48,292,240,36,font,palette.text);
-        text(dc,saveFolder,306,292,446,36,font,palette.text);
-        text(dc,L"MP4 сохраняются автоматически с датой и временем.",306,334,646,24,smallFont,palette.muted);
-        line(dc,378);
-        text(dc,L"О SCREENCAST",48,394,600,24,heading,palette.text);
-        text(dc,L"Версия",48,426,240,24,font,palette.text);
-        text(dc,SCREENCAST_VERSION_W,306,426,400,24,font,palette.text);
-        text(dc,L"Разработчик",48,458,240,24,font,palette.text);
-        text(dc,L"Sander Stripa",306,458,400,24,font,palette.text);
-        RestoreDC(dc,saved);
     }
     void paintWorking(HDC dc) {
         RECT r{}; GetClientRect(window, &r); FillRect(dc, &r, brush);
@@ -609,7 +620,8 @@ public:
         auto& control = found->second; auto dc = item.hDC; auto r = item.rcItem;
         bool disabled = item.itemState & ODS_DISABLED, pressed = item.itemState & ODS_SELECTED;
         COLORREF color = disabled ? palette.muted : palette.text;
-        FillRect(dc, &r, brush);
+        auto controlBrush=settingControl(item.CtlID)?CreateSolidBrush(sheetSurface()):nullptr;
+        FillRect(dc,&r,controlBrush?controlBrush:brush);if(controlBrush)DeleteObject(controlBrush);
         if(item.CtlID==ConnectLink){
             SelectObject(dc,smallFont);SetBkMode(dc,TRANSPARENT);SetTextColor(dc,control.hover?palette.text:palette.muted);
             DrawTextW(dc,L"by connect.",-1,&r,DT_CENTER|DT_VCENTER|DT_SINGLELINE);return;
@@ -638,12 +650,13 @@ public:
 
         if (control.kind == Kind::Choice) label = control.items.empty() ? L"Нет доступных устройств" : control.items[control.selected];
         label=tr(label);
+        if(item.CtlID==SaveFolder)label=english?L"Choose":L"Выбрать";
         if(item.CtlID==UpdateApp)label=english?L"Update":L"Обновить";
         if(item.CtlID==Minimize || item.CtlID==Close || item.CtlID==CloseSettings){
             auto over=item.CtlID==Minimize?palette.hover:(dark?RGB(84,36,47):RGB(246,209,217));
             Gdiplus::Graphics g(dc);g.SetSmoothingMode(Gdiplus::SmoothingModeAntiAlias);
-            auto color=blend(palette.background,over,control.hot);Gdiplus::SolidBrush fill(Gdiplus::Color(255,GetRValue(color),GetGValue(color),GetBValue(color)));
-            g.FillEllipse(&fill,0.f,0.f,float(r.right),float(r.bottom));
+            auto color=blend(item.CtlID==CloseSettings?sheetSurface():palette.background,over,control.hot);Gdiplus::SolidBrush fill(Gdiplus::Color(255,GetRValue(color),GetGValue(color),GetBValue(color)));
+            g.FillEllipse(&fill,1.f,1.f,float(r.right-2),float(r.bottom-2));
             auto ink=palette.text;Gdiplus::Pen pen(Gdiplus::Color(255,GetRValue(ink),GetGValue(ink),GetBValue(ink)),float(px(1)));
             float cx=r.right/2.f,cy=r.bottom/2.f,d=float(px(5));
             g.DrawLine(&pen,cx-d,cy+(item.CtlID==Minimize?0:-d),cx+d,cy+(item.CtlID==Minimize?0:d));
@@ -651,23 +664,17 @@ public:
             return;
         }
         bool themeButton=item.CtlID>=ThemeSystem&&item.CtlID<=ThemeDark;
-        bool languageButton=item.CtlID==Language||item.CtlID==LanguageEnglish;
-        if(themeButton||languageButton){
-            bool selected=themeButton?int(item.CtlID)-ThemeSystem==theme:(item.CtlID==LanguageEnglish?english:!english);
-            auto stroke=CreatePen(PS_SOLID,1,selected&&themeButton?palette.muted:palette.line);
-            auto fill=CreateSolidBrush(selected?palette.hover:palette.background);auto a=SelectObject(dc,stroke),b=SelectObject(dc,fill);
-            RoundRect(dc,0,0,r.right-1,r.bottom-1,px(16),px(16));SelectObject(dc,a);SelectObject(dc,b);DeleteObject(stroke);DeleteObject(fill);
-            COLORREF ink=selected?palette.text:palette.muted;SelectObject(dc,smallFont);SetBkMode(dc,TRANSPARENT);SetTextColor(dc,ink);
-            RECT textRect=r;
-            if(themeButton){SIZE extent{};GetTextExtentPoint32W(dc,label.c_str(),int(label.size()),&extent);
-                int left=(r.right-extent.cx-px(18))/2;drawVpnThemeIcon(dc,item.CtlID==ThemeSystem?VpnIcon::Monitor:item.CtlID==ThemeLight?VpnIcon::Sun:VpnIcon::Moon,left,(r.bottom-px(13))/2,px(13),ink);textRect.left=left+px(18);textRect.right=r.right-px(4);
-                DrawTextW(dc,label.c_str(),-1,&textRect,DT_LEFT|DT_VCENTER|DT_SINGLELINE);
-            }else DrawTextW(dc,label.c_str(),-1,&textRect,DT_CENTER|DT_VCENTER|DT_SINGLELINE);
-            return;
+        if(themeButton){
+            bool selected=int(item.CtlID)-ThemeSystem==theme;
+            auto fill=CreateSolidBrush(selected?sheetSurface():blend(sheetField(),palette.hover,control.hot));
+            auto pen=CreatePen(PS_SOLID,1,selected?sheetLine():sheetField());auto p=SelectObject(dc,pen),b=SelectObject(dc,fill);
+            RoundRect(dc,px(2),px(1),r.right-px(2),r.bottom-px(1),px(12),px(12));SelectObject(dc,p);SelectObject(dc,b);DeleteObject(fill);DeleteObject(pen);
+            SelectObject(dc,heading);SetBkMode(dc,TRANSPARENT);SetTextColor(dc,palette.text);DrawTextW(dc,label.c_str(),-1,&r,DT_CENTER|DT_VCENTER|DT_SINGLELINE);return;
         }
+        if(item.CtlID==Language)label=english?L"English":L"Русский";
         bool primary = item.CtlID == Start;
-        auto pen = CreatePen(PS_SOLID, 1, palette.line);
-        auto base=(control.kind==Kind::Choice||control.kind==Kind::Button)?(dark?RGB(17,18,21):RGB(252,252,253)):palette.background;
+        auto pen = CreatePen(PS_SOLID, 1, settingControl(item.CtlID)?sheetLine():palette.line);
+        auto base=settingControl(item.CtlID)?sheetField():(control.kind==Kind::Choice||control.kind==Kind::Button)?(dark?RGB(17,18,21):RGB(252,252,253)):palette.background;
         auto fill = CreateSolidBrush(primary && !disabled ? palette.active : blend(base,palette.hover,pressed?1.f:control.hot));
         auto oldPen = SelectObject(dc, pen), oldBrush = SelectObject(dc, fill);
         if(control.kind==Kind::Segment)SelectObject(dc,GetStockObject(NULL_PEN));
@@ -748,7 +755,13 @@ public:
         if(id==Minimize){ShowWindow(window,SW_MINIMIZE);return;}
         if(id==Close){SendMessageW(window,WM_CLOSE,0,0);return;}
         if(id==SaveFolder){selectFolder();return;}
-        if(id==Language||id==LanguageEnglish){changeLanguage(id==LanguageEnglish);return;}
+        if(id==Language){
+            RECT anchor{};GetWindowRect(controls[Language].window,&anchor);
+            std::vector<std::wstring> items{L"Русский",L"English"};
+            Dropdown menu(items,font,dpi,english?1:0,dark?RGB(17,18,21):RGB(252,252,253),palette.text,palette.line,palette.hover);
+            int choice=menu.show(window,anchor);if(choice)changeLanguage(choice==2);return;
+        }
+        if(id==LanguageEnglish){changeLanguage(true);return;}
         if (id >= ThemeSystem && id <= ThemeDark) {
             theme = id - ThemeSystem; applyTheme(); saveTheme(); return;
         }
@@ -848,7 +861,7 @@ public:
             command(LanguageEnglish);require(tr(L"Начать запись")==L"Start recording",L"Language does not translate");
             saveFolder=(directory/L"recordings").wstring();savePreferences();App loaded;loaded.preferencesKey=preferencesKey;loaded.readTheme();
             require(loaded.english&&loaded.theme==0&&loaded.saveFolder==saveFolder,L"Settings do not persist");
-            command(Language);require(tr(L"Настройки")==L"Настройки",L"Language cannot return to RU");
+            changeLanguage(false);require(tr(L"Настройки")==L"Настройки",L"Language cannot return to RU");
             command(CloseSettings);require(!settingsOpen && controls[SourceKind].selected==source&&live->micEnabled.load()==mic&&live->cameraEnabled.load()==camera,L"UI settings changed capture state");
             require(!(GetWindowLongPtrW(controls[ThemeDark].window,GWL_STYLE)&WS_VISIBLE),L"Theme controls remain on the main screen");
         }catch(...){RegDeleteTreeW(HKEY_CURRENT_USER,preferencesKey.c_str());testing=true;throw;}
@@ -958,7 +971,7 @@ LRESULT CALLBACK procedure(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam
             app->scrollTo(position); return 0;
         }
         case WM_MOUSEWHEEL: app->scrollTo(app->scroll - GET_WHEEL_DELTA_WPARAM(wParam) * app->px(60) / WHEEL_DELTA); return 0;
-        case WM_LBUTTONDOWN: app->dragCamera(GET_X_LPARAM(lParam),GET_Y_LPARAM(lParam),true);return 0;
+        case WM_LBUTTONDOWN: if(app->settingsOpen){int x=GET_X_LPARAM(lParam);if(x<app->sheetLeft()||x>app->sheetLeft()+app->px(720)||GET_Y_LPARAM(lParam)>app->px(560))app->animateSettings(false);return 0;}app->dragCamera(GET_X_LPARAM(lParam),GET_Y_LPARAM(lParam),true);return 0;
         case WM_MOUSEMOVE: if(app->dragging) app->dragCamera(GET_X_LPARAM(lParam),GET_Y_LPARAM(lParam),false);return 0;
         case WM_LBUTTONUP: if(app->dragging) {app->dragging=false;ReleaseCapture();}return 0;
         case WM_CAPTURECHANGED: app->dragging=false;return 0;
