@@ -5,3 +5,4 @@
 - Composite the entire moving sheet in one frame; expose native controls only after animation completes.
 - Replace the native context menu with a styled 34px-row popup.
 - Inset caption hover circles to preserve their complete antialiased edges.
+- Allow window dragging from the open settings header while preserving close-button hit targets.

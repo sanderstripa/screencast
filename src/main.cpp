@@ -824,6 +824,11 @@ public:
         auto header=MAKELPARAM(outer.left+px(300),outer.top+px(24));require(SendMessageW(window,WM_NCHITTEST,0,header)==HTCAPTION,L"Custom header cannot drag");
         command(Minimize);require(IsIconic(window),L"Custom minimize failed");SingleInstance::activate(window);require(!IsIconic(window),L"Restore failed");
         command(OpenSettings);require(settingsOpen,L"Settings did not open");
+        GetWindowRect(window,&outer);
+        auto sheetHeader=MAKELPARAM(outer.left+sheetLeft()+px(160),outer.top+px(30));
+        require(SendMessageW(window,WM_NCHITTEST,0,sheetHeader)==HTCAPTION,L"Settings header cannot drag the window");
+        auto sheetClose=MAKELPARAM(outer.left+sheetLeft()+px(686),outer.top+px(30));
+        require(SendMessageW(window,WM_NCHITTEST,0,sheetClose)==HTCLIENT,L"Settings close button became a drag target");
         require((GetWindowLongPtrW(controls[Language].window,GWL_STYLE)&WS_VISIBLE)!=0 && !(GetWindowLongPtrW(controls[Source].window,GWL_STYLE)&WS_VISIBLE),L"Settings visibility is incorrect");
         auto source=controls[SourceKind].selected;auto mic=live->micEnabled.load();auto camera=live->cameraEnabled.load();
         preferencesKey=L"Software\\ScreencastUITest-"+std::to_wstring(GetCurrentProcessId());testing=false;
@@ -949,7 +954,13 @@ LRESULT CALLBACK procedure(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam
         case WM_ENDSESSION:if(wParam)app->saveWindowPosition();break;
         case WM_CONTEXTMENU: if(reinterpret_cast<HWND>(wParam)==hwnd)app->contextMenu(lParam);return 0;
         case WM_NCRBUTTONUP:if(wParam==HTCAPTION)app->contextMenu(lParam);return 0;
-        case WM_NCHITTEST:{auto hit=DefWindowProcW(hwnd,message,wParam,lParam);POINT p{GET_X_LPARAM(lParam),GET_Y_LPARAM(lParam)};ScreenToClient(hwnd,&p);return hit==HTCLIENT&&!app->settingsOpen&&p.y<app->px(62)?HTCAPTION:hit;}
+        case WM_NCHITTEST:{auto hit=DefWindowProcW(hwnd,message,wParam,lParam);POINT p{GET_X_LPARAM(lParam),GET_Y_LPARAM(lParam)};ScreenToClient(hwnd,&p);if(hit!=HTCLIENT)return hit;
+            if(app->settingsOpen){
+                int left=app->sheetLeft();
+                if(app->sheetProgress==1&&p.y>=0&&p.y<app->px(60)&&p.x>=left&&p.x<left+app->px(652))return HTCAPTION;
+                return HTCLIENT;
+            }
+            return p.y<app->px(62)?HTCAPTION:hit;}
         case WM_SYSCOMMAND:if((wParam&0xfff0)==SC_MAXIMIZE)return 0;break;
         case WM_GETICON:return reinterpret_cast<LRESULT>(app->windowIcon(wParam,lParam));
         case WM_COMMAND:
