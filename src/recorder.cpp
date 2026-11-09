@@ -306,10 +306,21 @@ void Recorder::start(Settings settings, HWND notify) {
         } catch (...) {
             result->message = errorText();
             if (writer) {
-                try { writer->finalize(); result->path = temporary; result->message += L"\nДоступная часть сохранена во временный MP4."; }
+                try {
+                    writer->finalize();writer.reset();
+                    // Keep a playable partial recording beside the requested output when possible.
+                    auto recovered=settings.path+L".recovered.mp4";
+                    if(MoveFileExW(temporary.c_str(),recovered.c_str(),MOVEFILE_WRITE_THROUGH))result->path=recovered;
+                    else result->path=temporary;
+                    result->message += L"\nДоступная часть записи сохранена.";
+                }
                 catch (...) { result->message += L"\nНе удалось завершить временный MP4; файл может быть поврежден."; result->path = temporary; }
                 writer.reset();
             }
+            // A rename can fail after successful finalization (e.g. disconnected storage).
+            // Always report the surviving temporary file, even after the writer was released.
+            if(result->path.empty()&&!temporary.empty()&&GetFileAttributesW(temporary.c_str())!=INVALID_FILE_ATTRIBUTES)
+                result->path=temporary;
         }
         webcam_=nullptr; recording_ = false; busy_ = false;
         if (mmcss) AvRevertMmThreadCharacteristics(mmcss);

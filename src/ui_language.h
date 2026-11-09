@@ -8,6 +8,12 @@ inline std::wstring uiText(std::wstring value,bool english) {
         value=L"Monitor "+value.substr(6);auto pos=value.find(L" · основной");if(pos!=std::wstring::npos)value.replace(pos,std::wstring(L" · основной").size(),L" · primary");return value;
     }
     static std::map<std::wstring,std::wstring> const words{
+        {L"Системная",L"System"},{L"Тема",L"Theme"},{L"Язык интерфейса",L"Interface language"},
+        {L"СОХРАНЕНИЕ ЗАПИСЕЙ",L"RECORDING STORAGE"},{L"Папка сохранения MP4",L"MP4 recording folder"},
+        {L"MP4 сохраняются автоматически с датой и временем.",L"MP4 files are saved automatically with date and time."},
+        {L"О SCREENCAST",L"ABOUT SCREENCAST"},{L"Версия",L"Version"},{L"Разработчик",L"Developer"},
+        {L"Папка записи недоступна. Выберите другую папку до начала записи.",L"The recording folder is unavailable. Choose another folder before recording."},
+        {L"Отмена",L"Cancel"},{L"Доступная часть записи: ",L"Recovered recording: "},{L"Не удалось открыть браузер",L"Could not open the browser"},
         {L"Настройки",L"Settings"},{L"Назад",L"Back"},{L"ВНЕШНИЙ ВИД",L"APPEARANCE"},{L"ТЕМА",L"THEME"},{L"ЯЗЫК",L"LANGUAGE"},
         {L"ПАПКА СОХРАНЕНИЯ",L"SAVE FOLDER"},{L"Выбрать папку…",L"Choose folder…"},{L"Система",L"System"},{L"Светлая",L"Light"},{L"Тёмная",L"Dark"},
         {L"Источник",L"Source"},{L"Запись экрана",L"Screen capture"},{L"Отдельное окно",L"Window capture"},{L"Обновить",L"Refresh"},

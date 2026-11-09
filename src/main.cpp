@@ -24,6 +24,8 @@
 #include "ui_palette.h"
 #include "vpn_icons.h"
 #include "window_position.h"
+#include "settings_backdrop.h"
+#include "recording_path.h"
 
 int encoderSelfTest(std::wstring const& directory);
 int cameraSelfTest(std::wstring const& directory);
@@ -33,7 +35,7 @@ namespace {
 enum Id { SourceKind = 100, Source, Refresh, OutputMode, OutputDevice, Microphone, MicDevice,
     Denoise, Webcam, CameraDevice, Corner, Background, BackgroundFile, Save, Start, ThemeSystem, ThemeLight, ThemeDark,
     SystemVolume,MicVolume,NoiseStrength,BlurStrength,BackgroundPreset,CameraMirror,
-    OpenSettings,Back,Language,SaveFolder,Minimize,Close,LanguageEnglish };
+    OpenSettings,Back,Language,SaveFolder,Minimize,Close,LanguageEnglish,CloseSettings,UpdateApp,ConnectLink };
 enum class Kind { Button, Choice, Toggle, Segment, Slider };
 struct Control {
     HWND window{}; Kind kind{}; std::wstring label;
@@ -47,7 +49,56 @@ public:
     bool dark{}, closing{}, finishing{};
     bool english{},settingsOpen{},settingsSnapshot{},keyboardFocusSnapshot{},testing{};
     bool windowHoverSnapshot{},windowHoverStartSnapshot{},cornersApplied{};
-    bool positionReady{};
+    bool positionReady{},uiTesting{};
+    SettingsBackdrop backdrop;
+    float sheetProgress{},sheetFrom{},sheetTarget{};
+    ULONGLONG sheetTime{};
+    int sheetOffset()const{return -int(px(548)*(1-sheetProgress));}
+    void openExternal(wchar_t const* url){
+        if(reinterpret_cast<INT_PTR>(ShellExecuteW(window,L"open",url,nullptr,nullptr,SW_SHOWNORMAL))<=32)
+            notice(L"Не удалось открыть браузер");
+    }
+    void renderWorking(HDC dc){
+        paintWorking(dc);
+        for(auto const& [id,c]:controls){
+            if(settingControl(id))continue;
+            RECT r{};GetWindowRect(c.window,&r);MapWindowPoints(nullptr,window,reinterpret_cast<POINT*>(&r),2);
+            auto state=SaveDC(dc);SetViewportOrgEx(dc,r.left,r.top,nullptr);IntersectClipRect(dc,0,0,r.right-r.left,r.bottom-r.top);
+            DRAWITEMSTRUCT item{};item.CtlID=id;item.hDC=dc;item.rcItem={0,0,r.right-r.left,r.bottom-r.top};
+            item.itemState=IsWindowEnabled(c.window)?0:ODS_DISABLED;draw(item);RestoreDC(dc,state);
+        }
+    }
+    void captureBackdrop(){
+        RECT r{};GetClientRect(window,&r);auto dc=GetDC(window);
+        backdrop.capture(dc,r.right,r.bottom,[&](HDC back){renderWorking(back);},dark);ReleaseDC(window,dc);
+    }
+    void layoutSettings(){
+        for(auto const& [id,c]:controls)if(settingControl(id)){
+            auto point=settingsPositions.at(id);SetWindowPos(c.window,nullptr,px(point.x),px(point.y)+(settingsOpen?sheetOffset():0),0,0,SWP_NOSIZE|SWP_NOZORDER|SWP_NOACTIVATE);
+        }
+    }
+    std::map<int,POINT> settingsPositions;
+    void animateSettings(bool open){
+        if(open&&!settingsOpen){captureBackdrop();settingsOpen=true;}
+        sheetFrom=sheetProgress;sheetTarget=open?1.f:0.f;sheetTime=GetTickCount64();
+        if(testing||uiTesting){sheetProgress=sheetTarget;settingsOpen=open;showPage();layoutSettings();return;}
+        showPage();SetTimer(window,6,16,nullptr);SetFocus(open?controls[CloseSettings].window:window);
+    }
+    void sheetTick(){
+        BOOL motion=TRUE;SystemParametersInfoW(SPI_GETCLIENTAREAANIMATION,0,&motion,0);
+        float t=motion?std::min(1.f,float(GetTickCount64()-sheetTime)/220.f):1.f;
+        sheetProgress=sheetFrom+(sheetTarget-sheetFrom)*(1-std::pow(1-t,3.f));layoutSettings();
+        if(t>=1){KillTimer(window,6);if(sheetTarget==0){settingsOpen=false;showPage();layoutSettings();backdrop.reset();}}
+        InvalidateRect(window,nullptr,FALSE);
+    }
+    void contextMenu(LPARAM point){
+        if(settingsOpen)return;
+        POINT p{GET_X_LPARAM(point),GET_Y_LPARAM(point)};
+        if(p.x==-1&&p.y==-1){GetCursorPos(&p);}
+        auto menu=CreatePopupMenu();AppendMenuW(menu,MF_STRING,OpenSettings,tr(L"Настройки").c_str());
+        int picked=TrackPopupMenu(menu,TPM_RETURNCMD|TPM_RIGHTBUTTON,p.x,p.y,0,window,nullptr);DestroyMenu(menu);
+        if(picked==OpenSettings)animateSettings(true);
+    }
     void saveWindowPosition(){if(positionReady&&!testing)windowPosition::save(window,preferencesKey.c_str());}
     std::wstring saveFolder;
     std::wstring preferencesKey{L"Software\\Screencast"};
@@ -111,6 +162,8 @@ public:
     std::shared_ptr<Image const> displayed;
     static LRESULT CALLBACK controlProcedure(HWND hwnd,UINT message,WPARAM wp,LPARAM lp,UINT_PTR,DWORD_PTR) {
         if(message==WM_ERASEBKGND)return 1;
+        if(message==WM_CONTEXTMENU)return 0;
+        if(message==WM_SETCURSOR && GetDlgCtrlID(hwnd)==ConnectLink){SetCursor(LoadCursorW(nullptr,IDC_HAND));return TRUE;}
         auto self=reinterpret_cast<App*>(GetWindowLongPtrW(GetParent(hwnd),GWLP_USERDATA));
         if(self && (message==WM_MOUSEMOVE||message==WM_MOUSELEAVE)){
             auto& c=self->controls.at(GetDlgCtrlID(hwnd));bool hot=message==WM_MOUSEMOVE;
@@ -161,7 +214,7 @@ public:
         else setItems(BackgroundPreset,{L"Графитовый",L"Молочный",L"Светло-серый",L"Тёплый бежевый"});
     }
     void dragCamera(int x,int y,bool begin) {
-        if(!recorder.recording() || !controls[Webcam].checked || !displayed) return;
+        if(settingsOpen || !recorder.recording() || !controls[Webcam].checked || !displayed) return;
         float scale=float(previewRect.right-previewRect.left)/displayed->width;
         auto p=circlePlacement(displayed->width,displayed->height,recorder.cameraPosition());
         float cx=previewRect.left+(p.left+p.diameter*.5f)*scale, cy=previewRect.top+(p.top+p.diameter*.5f)*scale;
@@ -214,6 +267,7 @@ public:
         DWM_WINDOW_CORNER_PREFERENCE corners=DWMWCP_ROUND;
         cornersApplied=SUCCEEDED(DwmSetWindowAttribute(window,DWMWA_WINDOW_CORNER_PREFERENCE,&corners,sizeof(corners)));
         for (auto [id, value] : controls) InvalidateRect(value.window, nullptr, TRUE);
+        if(settingsOpen)captureBackdrop();
         InvalidateRect(window, nullptr, TRUE);
     }
     void fonts() {
@@ -338,12 +392,9 @@ public:
         } else if(backgroundPath.empty()) {controls[BackgroundFile].label=L"Выбрать своё изображение…";updateText(BackgroundFile);}
         showPage();
     }
-    bool settingControl(int id)const{return (id>=ThemeSystem&&id<=ThemeDark)||id==Language||id==LanguageEnglish||id==SaveFolder||id==Back;}
+    bool settingControl(int id)const{return (id>=ThemeSystem&&id<=ThemeDark)||id==Language||id==LanguageEnglish||id==SaveFolder||id==CloseSettings||id==UpdateApp||id==ConnectLink;}
     void showPage(){
-        for(auto& [id,c]:controls){
-            bool visible=id==Minimize||id==Close||id==OpenSettings|| (settingsOpen?settingControl(id):!settingControl(id));
-            ShowWindow(c.window,visible?SW_SHOW:SW_HIDE);
-        }
+        for(auto& [id,c]:controls)ShowWindow(c.window,(settingsOpen?settingControl(id):!settingControl(id))?SW_SHOW:SW_HIDE);
         InvalidateRect(window,nullptr,FALSE);
     }
     void changeLanguage(bool value){english=value;for(auto& [id,c]:controls)updateText(id);savePreferences();InvalidateRect(window,nullptr,FALSE);}
@@ -354,24 +405,26 @@ public:
             RegSetValueExW(key,L"SaveFolder",0,REG_SZ,reinterpret_cast<BYTE const*>(saveFolder.c_str()),DWORD((saveFolder.size()+1)*sizeof(wchar_t)));RegCloseKey(key);
         }
     }
-    void selectFolder(){
+    bool selectFolder(){
         ComPtr<IFileDialog> dialog;check(CoCreateInstance(CLSID_FileOpenDialog,nullptr,CLSCTX_INPROC_SERVER,IID_PPV_ARGS(&dialog)));
         DWORD flags{};check(dialog->GetOptions(&flags));check(dialog->SetOptions(flags|FOS_PICKFOLDERS|FOS_FORCEFILESYSTEM|FOS_PATHMUSTEXIST));
         auto title=tr(L"ПАПКА СОХРАНЕНИЯ");dialog->SetTitle(title.c_str());
-        if(SUCCEEDED(dialog->Show(window))){ComPtr<IShellItem> item;check(dialog->GetResult(&item));PWSTR name{};check(item->GetDisplayName(SIGDN_FILESYSPATH,&name));saveFolder=name;CoTaskMemFree(name);savePreferences();InvalidateRect(window,nullptr,FALSE);}
+        if(SUCCEEDED(dialog->Show(window))){ComPtr<IShellItem> item;check(dialog->GetResult(&item));PWSTR name{};check(item->GetDisplayName(SIGDN_FILESYSPATH,&name));saveFolder=name;CoTaskMemFree(name);savePreferences();InvalidateRect(window,nullptr,FALSE);return true;}
+        return false;
     }
     void create() {
         dpi = GetDpiForWindow(window); fonts();
-        add(OpenSettings,Kind::Segment,L"Настройки",848,16,36,36);
         add(Minimize,Kind::Segment,L"Свернуть",912,16,28,30);
         add(Close,Kind::Segment,L"Закрыть",948,16,28,30);
-        add(Back,Kind::Button,L"Назад",24,580,160,36);
-        add(Language,Kind::Segment,L"RU",312,140,32,28);
-        add(LanguageEnglish,Kind::Segment,L"EN",348,140,32,28);
-        add(ThemeSystem,Kind::Segment,L"Система",24,176,116,32);
-        add(ThemeLight,Kind::Segment,L"Светлая",144,176,116,32);
-        add(ThemeDark,Kind::Segment,L"Тёмная",264,176,116,32);
-        add(SaveFolder,Kind::Button,L"Выбрать папку…",24,324,308,36);
+        add(CloseSettings,Kind::Segment,L"Закрыть",948,16,28,30);
+        add(ThemeSystem,Kind::Segment,L"Системная",306,126,150,36);
+        add(ThemeLight,Kind::Segment,L"Светлая",466,126,150,36);
+        add(ThemeDark,Kind::Segment,L"Тёмная",626,126,150,36);
+        add(Language,Kind::Segment,L"Русский",306,174,150,36);
+        add(LanguageEnglish,Kind::Segment,L"English",466,174,150,36);
+        add(SaveFolder,Kind::Button,L"Выбрать папку…",766,292,186,36);
+        add(UpdateApp,Kind::Button,L"Обновить",766,422,186,36);
+        add(ConnectLink,Kind::Segment,L"by connect.",420,494,160,28);
         add(SourceKind,Kind::Choice,L"Источник",24,128,178,34);setItems(SourceKind,{L"Запись экрана",L"Отдельное окно"});
         add(Refresh,Kind::Button,L"Обновить",214,128,96,34);
         add(Source,Kind::Choice,L"Экран / окно",24,172,286,34);
@@ -392,12 +445,15 @@ public:
         add(BackgroundPreset,Kind::Choice,L"Вариант",662,294,314,34);backgroundItems();
         add(BlurStrength,Kind::Slider,L"Размытие",662,336,314,54);controls[BlurStrength].selected=40;updateText(BlurStrength);
         add(BackgroundFile,Kind::Button,L"Выбрать своё изображение…",662,402,314,34);
-        add(Save,Kind::Button,L"Куда сохранить MP4…",24,580,250,36);
         add(Start,Kind::Button,L"Начать запись",726,580,250,36);
         // Keep the dense three-column layout; inputs share a 36px visual height.
         for(auto const& [id,c]:controls)if(c.kind==Kind::Choice || (c.kind==Kind::Button&&id!=Start&&id!=Save)){
             RECT r{};GetWindowRect(c.window,&r);MapWindowPoints(nullptr,window,reinterpret_cast<POINT*>(&r),2);
             SetWindowPos(c.window,nullptr,r.left,r.top,r.right-r.left,px(36),SWP_NOZORDER);
+        }
+        for(auto const& [id,c]:controls)if(settingControl(id)){
+            RECT r{};GetWindowRect(c.window,&r);MapWindowPoints(nullptr,window,reinterpret_cast<POINT*>(&r),2);
+            settingsPositions[id]={MulDiv(r.left,96,dpi),MulDiv(r.top,96,dpi)};
         }
         MONITORINFO monitor{sizeof(monitor)};GetMonitorInfoW(MonitorFromWindow(window,MONITOR_DEFAULTTONEAREST),&monitor);
         dpi=std::min<int>(dpi,std::min<long>((monitor.rcWork.right-monitor.rcWork.left-20)*96/1000,(monitor.rcWork.bottom-monitor.rcWork.top-50)*96/640));
@@ -426,21 +482,41 @@ public:
         auto pen = CreatePen(PS_SOLID, 1, palette.line); auto old = SelectObject(dc, pen);
         MoveToEx(dc, px(24), px(y)-scroll, nullptr); LineTo(dc, px(976), px(y)-scroll); SelectObject(dc, old); DeleteObject(pen);
     }
-    void paint(HDC dc) {
+    void paint(HDC dc){
+        if(!settingsOpen){paintWorking(dc);return;}
+        RECT r{};GetClientRect(window,&r);FillRect(dc,&r,brush);backdrop.paint(dc,r.right,r.bottom);
+        int offset=sheetOffset();
+        // Only the bottom edge is rounded: the sheet begins at the window's top edge.
+        for(int i=18;i>0;--i){RECT shadow{0,offset+px(548),r.right,offset+px(548+i)};
+            auto fill=CreateSolidBrush(blend(palette.background,RGB(0,0,0),.03f));FillRect(dc,&shadow,fill);DeleteObject(fill);}
+        auto saved=SaveDC(dc);SetViewportOrgEx(dc,0,offset,nullptr);
+        Gdiplus::Graphics graphics(dc);graphics.SetSmoothingMode(Gdiplus::SmoothingModeAntiAlias);
+        Gdiplus::GraphicsPath shape;float w=float(r.right),h=float(px(548)),radius=float(px(12));
+        shape.AddLine(0,0,w,0);shape.AddLine(w,0,w,h-radius);
+        shape.AddArc(w-radius*2,h-radius*2,radius*2,radius*2,0,90);
+        shape.AddLine(w-radius,h,radius,h);shape.AddArc(0,h-radius*2,radius*2,radius*2,90,90);shape.CloseFigure();
+        Gdiplus::SolidBrush fill(Gdiplus::Color(255,GetRValue(palette.background),GetGValue(palette.background),GetBValue(palette.background)));graphics.FillPath(&fill,&shape);
+        text(dc,L"Настройки",24,18,700,30,title,palette.text);
+        text(dc,L"ВНЕШНИЙ ВИД",48,82,800,24,heading,palette.text);
+        text(dc,L"Тема",48,126,240,36,font,palette.text);
+        text(dc,L"Язык интерфейса",48,174,240,36,font,palette.text);
+        line(dc,232);
+        text(dc,L"СОХРАНЕНИЕ ЗАПИСЕЙ",48,250,800,24,heading,palette.text);
+        text(dc,L"Папка сохранения MP4",48,292,240,36,font,palette.text);
+        text(dc,saveFolder,306,292,446,36,font,palette.text);
+        text(dc,L"MP4 сохраняются автоматически с датой и временем.",306,334,646,24,smallFont,palette.muted);
+        line(dc,378);
+        text(dc,L"О SCREENCAST",48,394,600,24,heading,palette.text);
+        text(dc,L"Версия",48,426,240,24,font,palette.text);
+        text(dc,SCREENCAST_VERSION_W,306,426,400,24,font,palette.text);
+        text(dc,L"Разработчик",48,458,240,24,font,palette.text);
+        text(dc,L"Sander Stripa",306,458,400,24,font,palette.text);
+        RestoreDC(dc,saved);
+    }
+    void paintWorking(HDC dc) {
         RECT r{}; GetClientRect(window, &r); FillRect(dc, &r, brush);
         spaced(dc, L"SCREENCAST.", 24, title, 2);
         line(dc,62);
-        if(settingsOpen){
-            text(dc,L"Настройки",24,88,600,28,title,palette.text);
-            auto pen=CreatePen(PS_SOLID,1,palette.line);auto previous=SelectObject(dc,pen);
-            for(int y:{128,220}){MoveToEx(dc,px(24),px(y),nullptr);LineTo(dc,px(380),px(y));}SelectObject(dc,previous);DeleteObject(pen);
-            drawVpnIcon(dc,VpnIcon::Palette,px(24),px(145),px(17),palette.muted);
-            text(dc,L"ВНЕШНИЙ ВИД",51,140,248,28,smallFont,palette.text);
-            text(dc,L"ПАПКА СОХРАНЕНИЯ",24,244,600,20,heading,palette.muted);
-            text(dc,saveFolder,24,276,952,36,font,palette.text);
-            text(dc,L"Папка используется для новых записей. Файл MP4 можно выбрать перед записью.",24,372,700,48,smallFont,palette.muted,DT_WORDBREAK);
-            return;
-        }
         text(dc,L"ИСТОЧНИК ВИДЕО",24,100,286,20,heading,palette.text);
         text(dc,L"ЗВУК",336,100,300,20,heading,palette.text);
         text(dc,L"КАМЕРА И ФОН",662,100,314,20,heading,palette.text);
@@ -456,6 +532,7 @@ public:
             label=tr(label);label+=tr(recorder.hardware()?L" · аппаратное кодирование":L" · программное кодирование");
         }
         text(dc, label, 24, 546, 952, 24, smallFont, palette.muted);
+        text(dc,saveFolder,24,580,660,36,smallFont,palette.muted);
         if(modelDownload||finishing){
             auto track=CreateSolidBrush(palette.line),ink=CreateSolidBrush(palette.text);
             RECT bar{px(662),px(532),px(976),px(536)};FillRect(dc,&bar,track);
@@ -482,6 +559,10 @@ public:
         bool disabled = item.itemState & ODS_DISABLED, pressed = item.itemState & ODS_SELECTED;
         COLORREF color = disabled ? palette.muted : palette.text;
         FillRect(dc, &r, brush);
+        if(item.CtlID==ConnectLink){
+            SelectObject(dc,smallFont);SetBkMode(dc,TRANSPARENT);SetTextColor(dc,control.hover?palette.text:palette.muted);
+            DrawTextW(dc,L"by connect.",-1,&r,DT_CENTER|DT_VCENTER|DT_SINGLELINE);return;
+        }
         if(item.CtlID==OpenSettings){
             // Exact approved SVG contours. No tile, frame, selection ring or alternate gear.
             drawApprovedSettingsIcon(dc,(r.right-px(24))/2,(r.bottom-px(24))/2,px(24),control.hot>0?palette.text:palette.muted);
@@ -506,8 +587,15 @@ public:
 
         if (control.kind == Kind::Choice) label = control.items.empty() ? L"Нет доступных устройств" : control.items[control.selected];
         label=tr(label);
-        if(item.CtlID==Minimize || item.CtlID==Close){
-            drawVpnWindowIcon(dc,item.CtlID==Minimize?VpnIcon::Minus:VpnIcon::X,r.right,r.bottom,dpi,control.hot>0?palette.text:palette.muted);
+        if(item.CtlID==Minimize || item.CtlID==Close || item.CtlID==CloseSettings){
+            auto over=item.CtlID==Minimize?palette.hover:(dark?RGB(84,36,47):RGB(246,209,217));
+            Gdiplus::Graphics g(dc);g.SetSmoothingMode(Gdiplus::SmoothingModeAntiAlias);
+            auto color=blend(palette.background,over,control.hot);Gdiplus::SolidBrush fill(Gdiplus::Color(255,GetRValue(color),GetGValue(color),GetBValue(color)));
+            g.FillEllipse(&fill,0.f,0.f,float(r.right),float(r.bottom));
+            auto ink=palette.text;Gdiplus::Pen pen(Gdiplus::Color(255,GetRValue(ink),GetGValue(ink),GetBValue(ink)),float(px(1)));
+            float cx=r.right/2.f,cy=r.bottom/2.f,d=float(px(5));
+            g.DrawLine(&pen,cx-d,cy+(item.CtlID==Minimize?0:-d),cx+d,cy+(item.CtlID==Minimize?0:d));
+            if(item.CtlID!=Minimize)g.DrawLine(&pen,cx+d,cy-d,cx-d,cy+d);
             return;
         }
         bool themeButton=item.CtlID>=ThemeSystem&&item.CtlID<=ThemeDark;
@@ -593,16 +681,23 @@ public:
         settings.replaceBackground = settings.camera && controls[Background].selected==5;
         settings.backgroundPath = backgroundPath;
         if (settings.replaceBackground && backgroundPath.empty()) throw winrt::hresult_error(E_INVALIDARG, L"Выберите изображение фона");
-        if (path.empty()) path = choose(true, L"Видео MP4\0*.mp4\0\0");
-        if (path.empty()) return;
-        if (_wcsicmp(std::filesystem::path(path).extension().c_str(), L".mp4")) path += L".mp4";
+        for(;;){
+            try{path=recordingPath(saveFolder);break;}
+            catch(...){
+                auto message=tr(L"Папка записи недоступна. Выберите другую папку до начала записи.")+L"\n"+saveFolder+L"\n"+errorText();
+                UiNotice choice(window,font,dpi,palette.background,palette.text,palette.line,message,tr(L"Уведомление"),tr(L"Выбрать папку…"),tr(L"Отмена"));
+                if(!choice.show()||!selectFolder())return;
+            }
+        }
         settings.path = path;
         overlay.configure(settings.target,live);
         status = L"Подключаю источники…";
         recorder.start(settings, window); enabled();
     }
     void command(int id) {
-        if(id==OpenSettings||id==Back){settingsOpen=id==OpenSettings?!settingsOpen:false;showPage();SetFocus(controls[settingsOpen?Back:OpenSettings].window);return;}
+        if(id==OpenSettings||id==CloseSettings){animateSettings(id==OpenSettings);return;}
+        if(id==UpdateApp){openExternal(L"https://github.com/sanderstripa/screencast/releases");return;}
+        if(id==ConnectLink){openExternal(L"https://connect.sanderstripa.com/");return;}
         if(id==Minimize){ShowWindow(window,SW_MINIMIZE);return;}
         if(id==Close){SendMessageW(window,WM_CLOSE,0,0);return;}
         if(id==SaveFolder){selectFolder();return;}
@@ -641,9 +736,6 @@ public:
                 loadImage(value); backgroundPath = value;
                 controls[BackgroundFile].label = std::filesystem::path(value).filename().wstring(); updateText(BackgroundFile);
             }
-        } else if (id == Save) {
-            auto value = choose(true, L"Видео MP4\0*.mp4\0\0");
-            if (!value.empty()) { path = value; status = std::filesystem::path(path).filename().wstring(); InvalidateRect(window, nullptr, TRUE); }
         } else if (id == Start) start();
     }
     void saveTheme() {
@@ -661,6 +753,7 @@ public:
         if(saveFolder.empty()){PWSTR name{};if(SUCCEEDED(SHGetKnownFolderPath(FOLDERID_Videos,0,nullptr,&name))){saveFolder=name;CoTaskMemFree(name);}}
     }
     void uiTest(std::filesystem::path const& directory){
+        uiTesting=true;
         auto require=[](bool value,wchar_t const* why){if(!value)throw winrt::hresult_error(E_FAIL,why);};
         RECT outer{};GetWindowRect(window,&outer);
         RECT expected{0,0,px(1000),px(640)};AdjustWindowRectExForDpi(&expected,WS_OVERLAPPED|WS_CAPTION|WS_SYSMENU|WS_MINIMIZEBOX,FALSE,0,GetDpiForWindow(window));
@@ -709,7 +802,7 @@ public:
             saveFolder=(directory/L"recordings").wstring();savePreferences();App loaded;loaded.preferencesKey=preferencesKey;loaded.readTheme();
             require(loaded.english&&loaded.theme==0&&loaded.saveFolder==saveFolder,L"Settings do not persist");
             command(Language);require(tr(L"Настройки")==L"Настройки",L"Language cannot return to RU");
-            command(Back);require(!settingsOpen && controls[SourceKind].selected==source&&live->micEnabled.load()==mic&&live->cameraEnabled.load()==camera,L"UI settings changed capture state");
+            command(CloseSettings);require(!settingsOpen && controls[SourceKind].selected==source&&live->micEnabled.load()==mic&&live->cameraEnabled.load()==camera,L"UI settings changed capture state");
             require(!(GetWindowLongPtrW(controls[ThemeDark].window,GWL_STYLE)&WS_VISIBLE),L"Theme controls remain on the main screen");
         }catch(...){RegDeleteTreeW(HKEY_CURRENT_USER,preferencesKey.c_str());testing=true;throw;}
         RegDeleteTreeW(HKEY_CURRENT_USER,preferencesKey.c_str());testing=true;
@@ -794,11 +887,13 @@ LRESULT CALLBACK procedure(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam
         case WM_EXITSIZEMOVE:KillTimer(hwnd,5);app->saveWindowPosition();break;
         case WM_QUERYENDSESSION:app->saveWindowPosition();return TRUE;
         case WM_ENDSESSION:if(wParam)app->saveWindowPosition();break;
-        case WM_NCHITTEST:{auto hit=DefWindowProcW(hwnd,message,wParam,lParam);POINT p{GET_X_LPARAM(lParam),GET_Y_LPARAM(lParam)};ScreenToClient(hwnd,&p);return hit==HTCLIENT&&p.y<app->px(62)?HTCAPTION:hit;}
+        case WM_CONTEXTMENU: if(reinterpret_cast<HWND>(wParam)==hwnd)app->contextMenu(lParam);return 0;
+        case WM_NCRBUTTONUP:if(wParam==HTCAPTION)app->contextMenu(lParam);return 0;
+        case WM_NCHITTEST:{auto hit=DefWindowProcW(hwnd,message,wParam,lParam);POINT p{GET_X_LPARAM(lParam),GET_Y_LPARAM(lParam)};ScreenToClient(hwnd,&p);return hit==HTCLIENT&&!app->settingsOpen&&p.y<app->px(62)?HTCAPTION:hit;}
         case WM_SYSCOMMAND:if((wParam&0xfff0)==SC_MAXIMIZE)return 0;break;
         case WM_GETICON:return reinterpret_cast<LRESULT>(app->windowIcon(wParam,lParam));
         case WM_COMMAND:
-            if (LOWORD(wParam) == IDCANCEL) { SendMessageW(hwnd, WM_CLOSE, 0, 0); return 0; }
+            if (LOWORD(wParam) == IDCANCEL) { if(app->settingsOpen)app->animateSettings(false);else SendMessageW(hwnd, WM_CLOSE, 0, 0); return 0; }
             if (!app->controls.contains(LOWORD(wParam))) return 0;
             if (HIWORD(wParam) == BN_CLICKED) app->command(LOWORD(wParam));
             else if (HIWORD(wParam) == BN_SETFOCUS) app->reveal(LOWORD(wParam));
@@ -832,9 +927,10 @@ LRESULT CALLBACK procedure(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam
                 SetWindowPos(c.window, nullptr, MulDiv(r.left, app->dpi, old), MulDiv(r.top, app->dpi, old),
                     MulDiv(r.right-r.left, app->dpi, old), MulDiv(r.bottom-r.top, app->dpi, old), SWP_NOZORDER);
             }
-            auto r = reinterpret_cast<RECT*>(lParam); SetWindowPos(hwnd, nullptr, r->left,r->top,r->right-r->left,r->bottom-r->top,SWP_NOZORDER); app->scrollRange(); return 0;
+            auto r = reinterpret_cast<RECT*>(lParam); SetWindowPos(hwnd, nullptr, r->left,r->top,r->right-r->left,r->bottom-r->top,SWP_NOZORDER); app->scrollRange();app->layoutSettings(); return 0;
         }
         case WM_TIMER:
+            if(wParam==6){app->sheetTick();return 0;}
             if(wParam==5){KillTimer(hwnd,5);app->saveWindowPosition();return 0;}
             if(wParam==4){app->hoverTick();return 0;}
             if(wParam==3) {
@@ -852,6 +948,7 @@ LRESULT CALLBACK procedure(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam
             app->recorder.join(); app->finishing = false;
             app->status = result->success ? L"Запись сохранена · " + std::filesystem::path(result->path).filename().wstring() : L"Запись остановлена";
             app->lastFile = result->path;
+            if(!result->success&&!result->path.empty())app->status=app->tr(L"Доступная часть записи: ")+result->path;
             if (result->success) app->path.clear();
             app->enabled();
             if (app->closing) DestroyWindow(hwnd);
@@ -865,7 +962,7 @@ LRESULT CALLBACK procedure(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam
                 app->recorder.stop(); app->enabled(); return 0;
             }
             DestroyWindow(hwnd); return 0;
-        case WM_DESTROY: KillTimer(hwnd, 1);KillTimer(hwnd,4);KillTimer(hwnd,5); PostQuitMessage(0); return 0;
+        case WM_DESTROY: KillTimer(hwnd, 1);KillTimer(hwnd,4);KillTimer(hwnd,5);KillTimer(hwnd,6); PostQuitMessage(0); return 0;
         }
     } catch (...) {
         app->notice(errorText());
@@ -942,7 +1039,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int show) {
         if (!hwnd) check(HRESULT_FROM_WIN32(GetLastError()));
         if(!diagnosticMode)windowPosition::restore(hwnd,state.preferencesKey.c_str());
         state.positionReady=true;
-        if(state.settingsSnapshot){state.settingsOpen=true;state.showPage();}
+        if(state.settingsSnapshot){state.captureBackdrop();state.settingsOpen=true;state.sheetProgress=1;state.showPage();state.layoutSettings();}
         SendMessageW(hwnd,WM_SETICON,ICON_BIG,reinterpret_cast<LPARAM>(state.windowIcon(ICON_BIG,0)));
         SendMessageW(hwnd,WM_SETICON,ICON_SMALL,reinterpret_cast<LPARAM>(state.windowIcon(ICON_SMALL2,0)));
         ShowWindow(hwnd, show); UpdateWindow(hwnd);

@@ -4,6 +4,8 @@ $repo=(Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 Copy-Item -LiteralPath (Join-Path $repo 'assets/Screencast.ico') -Destination (Join-Path $CoreRoot 'products/screencast.ico') -Force
 Copy-Item -LiteralPath (Join-Path $repo 'assets/Screencast-256.png') -Destination (Join-Path $CoreRoot 'core/web/assets/icon.png') -Force
 $path=Join-Path $CoreRoot 'adapters/screencast/adapter_windows.go'
+# Product-local adapter keeps this change isolated from all other CONNECT installers.
+Copy-Item -LiteralPath (Join-Path $repo 'installer/screencast-adapter_windows.go') -Destination $path -Force
 $text=[IO.File]::ReadAllText($path)
 $text=[regex]::Replace($text,'Screencast-shell-\d+\.\d+\.\d+\.ico',"Screencast-shell-$Version.ico")
 $hook=@'

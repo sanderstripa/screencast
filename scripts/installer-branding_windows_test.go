@@ -22,11 +22,21 @@ func (a *checkedBranding) Install(o core.Options) error {
  key,e:=registry.OpenKey(registry.CURRENT_USER,uninstallKey,registry.QUERY_VALUE);if e!=nil{a.t.Fatal(e)}
  icon,_,e:=key.GetStringValue("DisplayIcon");key.Close();if e!=nil{a.t.Fatal(e)}
  data,e:=os.ReadFile(icon);if e!=nil || !bytes.Equal(data,canonical){a.t.Fatal("registered icon differs",e)}
- script:=`$w=New-Object -ComObject WScript.Shell;foreach($p in @(([Environment]::GetFolderPath('Desktop')+'\Screencast.lnk'),([Environment]::GetFolderPath('Programs')+'\Screencast\Screencast.lnk'),([Environment]::GetFolderPath('Programs')+'\Screencast\Uninstall.lnk'))){if(!(Test-Path -LiteralPath $p)){throw 'Installed shortcut missing'};$l=$w.CreateShortcut($p);if($l.IconLocation -ne `+quote(icon+",0")+`){throw ('Stale installed shortcut icon: '+$l.IconLocation)}}`
+ script:=`$ErrorActionPreference='Stop';$w=New-Object -ComObject WScript.Shell;$programs=[Environment]::GetFolderPath('Programs');foreach($p in @(([Environment]::GetFolderPath('Desktop')+'\Screencast.lnk'),($programs+'\Screencast.lnk'))){if(!(Test-Path -LiteralPath $p)){throw 'Installed shortcut missing'};$l=$w.CreateShortcut($p);if($l.IconLocation -ne `+quote(icon+",0")+`){throw ('Stale installed shortcut icon: '+$l.IconLocation)}};if(Test-Path -LiteralPath ($programs+'\Screencast')){throw 'Legacy Start Menu folder remains'};if($w.CreateShortcut($programs+'\Screencast.lnk').TargetPath -ne `+quote(filepath.Join(o.Path,"Screencast.exe"))+`){throw 'Wrong Start Menu shortcut target'}`
  if e=runPS(script);e!=nil{a.t.Fatal(e)}
  (*a.installs)++
- if *a.installs==1 { if e=os.WriteFile(filepath.Join(o.Path,"assets","Screencast-shell-0.2.5.ico"),[]byte("stale icon from previous installation"),0644);e!=nil{a.t.Fatal(e)} }
+ if *a.installs==1 {
+  if e=runPS(`$p=[Environment]::GetFolderPath('Programs')+'\Screencast';[IO.Directory]::CreateDirectory($p)|Out-Null;$w=New-Object -ComObject WScript.Shell;foreach($n in @('Screencast.lnk','Uninstall.lnk')){$l=$w.CreateShortcut($p+'\'+$n);$l.TargetPath=`+quote(filepath.Join(o.Path,"Screencast.exe"))+`;$l.Save()}`);e!=nil{a.t.Fatal(e)}
+  if e=os.WriteFile(filepath.Join(o.Path,"assets","Screencast-shell-0.2.5.ico"),[]byte("stale icon from previous installation"),0644);e!=nil{a.t.Fatal(e)} }
  return nil
+}
+
+func TestStartMenuRemoval(t *testing.T) {
+ // Lifecycle below verifies this against the actual Windows shell, including an old folder on upgrade.
+ if os.Getenv("CONNECT_INSTALLER_CI_TEST")!="1" {t.Skip("isolated CI only")}
+ a:=New()
+ if e:=a.shortcuts(false,false);e!=nil{t.Fatal(e)}
+ if e:=runPS(`if(Test-Path -LiteralPath ([Environment]::GetFolderPath('Programs')+'\Screencast.lnk')){throw 'Start shortcut remains after removal'}`);e!=nil{t.Fatal(e)}
 }
 
 func TestInstalledBrandingAndLegacyIconUpgrade(t *testing.T) {
