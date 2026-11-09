@@ -16,11 +16,11 @@ for name,expected in (("light",(255,255,255)),("dark",(8,9,11))):
     assert np.max(abs(image[16:52,848:884].astype(int)-expected))<=1,"Gear remains"
     hover=load("-window-hover");start=load("-window-hover-start")
     assert not np.array_equal(hover,start),"Hover transition is not animated"
-    x=image.shape[1]-50
+    x=image.shape[1]-54
     rose=np.array((84,36,47) if name=="dark" else (246,209,217))
-    assert np.max(abs(hover[21,x+14].astype(int)-rose))<=2,"Close hover does not use muted rose"
+    assert np.max(abs(hover[21,x+16].astype(int)-rose))<=2,"Close hover does not use muted rose"
     stable=np.ones(image.shape[:2],bool)
-    stable[16:46,image.shape[1]-86:image.shape[1]-22]=False
+    stable[16:48,image.shape[1]-94:image.shape[1]-22]=False
     assert np.array_equal(image[stable],hover[stable]),"Hover changes unrelated controls"
     settings=load("-settings");settings_en=load("-settings-en")
     assert settings.shape==image.shape

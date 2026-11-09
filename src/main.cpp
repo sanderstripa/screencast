@@ -115,7 +115,9 @@ public:
     }
     void layoutSettings(){
         for(auto const& [id,c]:controls)if(settingControl(id)){
-            auto point=settingsPositions.at(id);SetWindowPos(c.window,nullptr,px(point.x),px(point.y)+(settingsOpen?sheetOffset():0),0,0,SWP_NOSIZE|SWP_NOZORDER|SWP_NOACTIVATE);
+            auto point=settingsPositions.at(id);RECT area{};GetClientRect(window,&area);
+            int x=id==CloseSettings?area.right-px(54):px(point.x);
+            SetWindowPos(c.window,nullptr,x,px(point.y)+(settingsOpen?sheetOffset():0),0,0,SWP_NOSIZE|SWP_NOZORDER|SWP_NOACTIVATE);
         }
     }
     std::map<int,POINT> settingsPositions;
@@ -123,7 +125,7 @@ public:
         if(open&&!settingsOpen){captureBackdrop();settingsOpen=true;}
         sheetFrom=sheetProgress;sheetTarget=open?1.f:0.f;sheetTime=GetTickCount64();
         if((testing&&recordingTestDirectory.empty())||uiTesting){sheetProgress=sheetTarget;settingsOpen=open;showPage();layoutSettings();return;}
-        showPage();SetTimer(window,6,16,nullptr);SetFocus(open?controls[CloseSettings].window:window);
+        layoutSettings();showPage();SetTimer(window,6,16,nullptr);SetFocus(open?controls[CloseSettings].window:window);
     }
     void sheetTick(){
         BOOL motion=TRUE;SystemParametersInfoW(SPI_GETCLIENTAREAANIMATION,0,&motion,0);
@@ -273,8 +275,8 @@ public:
     int px(int value) const { return MulDiv(value, dpi, 96); }
     void layoutChrome(){
         if(!controls.contains(Close))return;RECT r{};GetClientRect(window,&r);
-        SetWindowPos(controls[Close].window,nullptr,r.right-px(50),px(16),px(28),px(30),SWP_NOZORDER|SWP_NOACTIVATE);
-        SetWindowPos(controls[Minimize].window,nullptr,r.right-px(86),px(16),px(28),px(30),SWP_NOZORDER|SWP_NOACTIVATE);
+        SetWindowPos(controls[Close].window,nullptr,r.right-px(54),px(16),px(32),px(32),SWP_NOZORDER|SWP_NOACTIVATE);
+        SetWindowPos(controls[Minimize].window,nullptr,r.right-px(94),px(16),px(32),px(32),SWP_NOZORDER|SWP_NOACTIVATE);
     }
     void scrollTo(int position) {
         RECT r{}; GetClientRect(window, &r);
@@ -455,9 +457,9 @@ public:
     }
     void create() {
         dpi = GetDpiForWindow(window); fonts();
-        add(Minimize,Kind::Segment,L"Свернуть",912,16,28,30);
-        add(Close,Kind::Segment,L"Закрыть",948,16,28,30);
-        add(CloseSettings,Kind::Segment,L"Закрыть",948,16,28,30);
+        add(Minimize,Kind::Segment,L"Свернуть",912,16,32,32);
+        add(Close,Kind::Segment,L"Закрыть",948,16,32,32);
+        add(CloseSettings,Kind::Segment,L"Закрыть",948,16,32,32);
         add(ThemeSystem,Kind::Segment,L"Системная",306,126,150,36);
         add(ThemeLight,Kind::Segment,L"Светлая",466,126,150,36);
         add(ThemeDark,Kind::Segment,L"Тёмная",626,126,150,36);
