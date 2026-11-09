@@ -117,7 +117,7 @@ public:
         for(auto const& [id,c]:controls)if(settingControl(id)){
             auto point=settingsPositions.at(id);RECT area{};GetClientRect(window,&area);
             int x=id==CloseSettings?area.right-px(54):px(point.x);
-            SetWindowPos(c.window,nullptr,x,px(point.y)+(settingsOpen?sheetOffset():0),0,0,SWP_NOSIZE|SWP_NOZORDER|SWP_NOACTIVATE);
+            SetWindowPos(c.window,nullptr,x,px(point.y)+(settingsOpen?sheetOffset():0),0,0,SWP_NOSIZE|SWP_NOZORDER|SWP_NOACTIVATE|SWP_NOCOPYBITS);
         }
     }
     std::map<int,POINT> settingsPositions;
@@ -125,14 +125,17 @@ public:
         if(open&&!settingsOpen){captureBackdrop();settingsOpen=true;}
         sheetFrom=sheetProgress;sheetTarget=open?1.f:0.f;sheetTime=GetTickCount64();
         if((testing&&recordingTestDirectory.empty())||uiTesting){sheetProgress=sheetTarget;settingsOpen=open;showPage();layoutSettings();return;}
-        layoutSettings();showPage();SetTimer(window,6,16,nullptr);SetFocus(open?controls[CloseSettings].window:window);
+        layoutSettings();showPage();
+        RedrawWindow(window,nullptr,nullptr,RDW_INVALIDATE|RDW_ALLCHILDREN|RDW_UPDATENOW);
+        // Start the clock after backdrop capture, visibility changes and the first paint.
+        sheetTime=GetTickCount64();SetTimer(window,6,16,nullptr);SetFocus(open?controls[CloseSettings].window:window);
     }
     void sheetTick(){
         BOOL motion=TRUE;SystemParametersInfoW(SPI_GETCLIENTAREAANIMATION,0,&motion,0);
         float t=motion?std::min(1.f,float(GetTickCount64()-sheetTime)/220.f):1.f;
         sheetProgress=sheetFrom+(sheetTarget-sheetFrom)*(1-std::pow(1-t,3.f));layoutSettings();
         if(t>=1){KillTimer(window,6);if(sheetTarget==0){settingsOpen=false;showPage();layoutSettings();backdrop.reset();}}
-        InvalidateRect(window,nullptr,FALSE);
+        RedrawWindow(window,nullptr,nullptr,RDW_INVALIDATE|RDW_ALLCHILDREN|RDW_UPDATENOW);
     }
     void contextMenu(LPARAM point){
         if(settingsOpen)return;
@@ -960,7 +963,7 @@ LRESULT CALLBACK procedure(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam
         case WM_LBUTTONUP: if(app->dragging) {app->dragging=false;ReleaseCapture();}return 0;
         case WM_CAPTURECHANGED: app->dragging=false;return 0;
         case WM_DRAWITEM: {auto item=*reinterpret_cast<DRAWITEMSTRUCT*>(lParam);bufferedPaint(item.hDC,item.rcItem,[&](HDC back){item.hDC=back;app->draw(item);});return TRUE;}
-        case WM_PAINT: {if(app->idleTestPhase==1)++app->idlePaints; PAINTSTRUCT ps{}; auto dc = BeginPaint(hwnd, &ps);bufferedPaint(dc,ps.rcPaint,[](HDC back){app->paint(back);}); EndPaint(hwnd, &ps); return 0; }
+        case WM_PAINT: {if(app->idleTestPhase==1)++app->idlePaints; PAINTSTRUCT ps{}; auto dc = BeginPaint(hwnd, &ps);RECT client{};GetClientRect(hwnd,&client);bufferedPaint(dc,client,[](HDC back){app->paint(back);}); EndPaint(hwnd, &ps); return 0; }
         case WM_ERASEBKGND: return 1;
         case WM_SETTINGCHANGE: if (!app->theme) app->applyTheme(); return 0;
         case WM_DPICHANGED: {
