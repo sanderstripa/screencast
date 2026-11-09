@@ -72,7 +72,7 @@ public:
                 controls[SystemVolume].selected=75;controls[MicVolume].selected=30;
                 setChecked(Denoise,true);controls[NoiseStrength].selected=80;
                 controls[CameraMirror].checked=true;controls[Background].selected=1;controls[BlurStrength].selected=60;updateLive();
-                animateSettings(true);recordingTestStage=2;recordingTestTime=now;
+                contextMenuTesting=true;POINT menuPoint{px(300),px(32)};ClientToScreen(window,&menuPoint);contextMenu(MAKELPARAM(menuPoint.x,menuPoint.y));contextMenuTesting=false;recordingTestStage=2;recordingTestTime=now;
             }else if(recordingTestStage==2&&now-recordingTestTime>750){
                 if(!settingsOpen||sheetProgress!=1||!recorder.recording())throw std::runtime_error("settings interrupted capture or did not animate open");
                 command(ThemeDark);command(LanguageEnglish);animateSettings(false);recordingTestStage=3;recordingTestTime=now;
@@ -142,6 +142,7 @@ public:
         if(t>=1){KillTimer(window,6);if(sheetTarget==0){settingsOpen=false;showPage();layoutSettings();backdrop.reset();}}
         RedrawWindow(window,nullptr,nullptr,RDW_INVALIDATE|RDW_ALLCHILDREN|RDW_UPDATENOW);
     }
+    bool contextMenuTesting{};
     void contextMenu(LPARAM point){
         if(settingsOpen)return;
         POINT p{GET_X_LPARAM(point),GET_Y_LPARAM(point)};
@@ -149,7 +150,7 @@ public:
         std::vector<std::wstring> items{tr(L"Настройки")};
         Dropdown menu(items,font,dpi,-1,dark?RGB(17,18,21):RGB(252,252,253),palette.text,palette.line,palette.hover);
         RECT anchor{p.x,p.y,p.x+px(260),p.y};
-        if(menu.show(window,anchor)==1)animateSettings(true);
+        if(menu.show(window,anchor,contextMenuTesting?+[](HWND popup){PostMessageW(popup,WM_KEYDOWN,VK_RETURN,0);}:nullptr)==1)animateSettings(true);
     }
     void saveWindowPosition(){if(positionReady&&!testing)windowPosition::save(window,preferencesKey.c_str());}
     std::wstring saveFolder;
@@ -823,7 +824,12 @@ public:
         auto before=outer;SendMessageW(window,WM_SYSCOMMAND,SC_MAXIMIZE,0);GetWindowRect(window,&outer);require(EqualRect(&before,&outer),L"Maximize changed the fixed window");
         auto header=MAKELPARAM(outer.left+px(300),outer.top+px(24));require(SendMessageW(window,WM_NCHITTEST,0,header)==HTCAPTION,L"Custom header cannot drag");
         command(Minimize);require(IsIconic(window),L"Custom minimize failed");SingleInstance::activate(window);require(!IsIconic(window),L"Restore failed");
-        command(OpenSettings);require(settingsOpen,L"Settings did not open");
+        // Exercise the actual unselected one-item popup, including its message loop.
+        contextMenuTesting=true;
+        POINT menuPoint{px(300),px(32)};ClientToScreen(window,&menuPoint);
+        SendMessageW(window,WM_CONTEXTMENU,reinterpret_cast<WPARAM>(window),MAKELPARAM(menuPoint.x,menuPoint.y));
+        contextMenuTesting=false;
+        require(settingsOpen,L"Settings did not open through the context menu");
         GetWindowRect(window,&outer);
         auto sheetHeader=MAKELPARAM(outer.left+sheetLeft()+px(160),outer.top+px(30));
         require(SendMessageW(window,WM_NCHITTEST,0,sheetHeader)==HTCAPTION,L"Settings header cannot drag the window");
@@ -1080,6 +1086,12 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int show) {
                 return DefSubclassProc(h,m,w,l);
             },1,reinterpret_cast<DWORD_PTR>(&dispatched));
             std::vector<std::wstring> values;for(int i=0;i<40;++i)values.push_back(L"Источник "+std::to_wstring(i));
+            std::vector<std::wstring> settingsItem{L"Настройки"};
+            for(int attempt=0;attempt<20;++attempt){
+                Dropdown unselected(settingsItem,font,96,-1,RGB(252,252,253),RGB(36,38,40),RGB(230,231,233),RGB(237,237,239));
+                int picked=unselected.show(owner,RECT{100,100,360,100},+[](HWND h){UpdateWindow(h);PostMessageW(h,WM_KEYDOWN,VK_RETURN,0);});
+                if(picked!=1||unselected.first!=0||unselected.selected!=-1||unselected.highlight!=0)throw winrt::hresult_error(E_FAIL,L"Unselected context menu index regression");
+            }
             auto run=[&](void (*script)(HWND),int expected) {
                 Dropdown list(values,font,96,0,RGB(11,11,12),RGB(240,240,240),RGB(52,54,58),RGB(30,31,33));
                 if(list.show(owner,RECT{100,100,400,132},script)!=expected)throw winrt::hresult_error(E_FAIL,L"Dropdown interaction failed");

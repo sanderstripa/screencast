@@ -17,7 +17,7 @@ public:
     Dropdown(std::vector<std::wstring> const& values,HFONT face,int scale,int current,
         COLORREF bg,COLORREF fg,COLORREF border,COLORREF hot)
         :items(values),font(face),background(bg),text(fg),line(border),hover(hot),
-         dpi(scale),selected(current),highlight(current) {
+         dpi(scale),selected(current),highlight(std::max(0,current)) {
         LOGFONTW attributes{};GetObjectW(face,sizeof(attributes),&attributes);font=CreateFontIndirectW(&attributes);
     }
     ~Dropdown(){if(font)DeleteObject(font);}
@@ -25,7 +25,7 @@ public:
     Dropdown& operator=(Dropdown const&)=delete;
     int px(int value) const {return MulDiv(value,dpi,96);}
     int hit(int y) const {int row=(y-px(6))/px(34);return y>=px(6) && row<rows && first+row<int(items.size())?first+row:-1;}
-    void reveal() {first=std::clamp(first,0,std::max(0,int(items.size())-rows));
+    void reveal() {highlight=std::clamp(highlight,0,std::max(0,int(items.size())-1));first=std::clamp(first,0,std::max(0,int(items.size())-rows));
         if(highlight<first)first=highlight;if(highlight>=first+rows)first=highlight-rows+1;}
     void paint(HDC dc) const {
         RECT all{0,0,width,height};auto bg=CreateSolidBrush(background);FillRect(dc,&all,bg);

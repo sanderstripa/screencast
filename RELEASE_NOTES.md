@@ -1,8 +1,5 @@
-# Screencast 0.5.3
+# Screencast 0.5.4
 
-- Match Torrent settings geometry, centered top sheet, section rules, theme segments, language dropdown, recording folder fields, About rows and ecosystem link.
-- Match Torrent surface colors, Montserrat typography, 220ms cubic animation and diffuse shadow.
-- Composite the entire moving sheet in one frame; expose native controls only after animation completes.
-- Replace the native context menu with a styled 34px-row popup.
-- Inset caption hover circles to preserve their complete antialiased edges.
-- Allow window dragging from the open settings header while preserving close-button hit targets.
+- Fix unselected context menu starting at row -1, which read outside its item list and produced a blank checked row or a crash.
+- Keep no-selection state separate from the keyboard highlight and clamp list viewport indices.
+- Exercise the actual right-click context menu and Enter selection in Windows UI tests and while recording, instead of directly opening settings.
