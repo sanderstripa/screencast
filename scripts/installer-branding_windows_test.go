@@ -31,6 +31,12 @@ func (a *checkedBranding) Install(o core.Options) error {
  return nil
 }
 
+func (a *checkedBranding) Remove() error {
+ if err:=a.Adapter.Remove();err!=nil{return err}
+ if err:=runPS(`if(Test-Path -LiteralPath ([Environment]::GetFolderPath('Programs')+'\Screencast.lnk')){throw 'Start shortcut remains after uninstall'};if(Test-Path -LiteralPath ([Environment]::GetFolderPath('Programs')+'\Screencast')){throw 'Start folder remains after uninstall'}`);err!=nil{a.t.Fatal(err)}
+ return nil
+}
+
 func TestStartMenuRemoval(t *testing.T) {
  // Lifecycle below verifies this against the actual Windows shell, including an old folder on upgrade.
  if os.Getenv("CONNECT_INSTALLER_CI_TEST")!="1" {t.Skip("isolated CI only")}

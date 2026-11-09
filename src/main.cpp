@@ -338,7 +338,7 @@ public:
         if (c.kind == Kind::Choice) text = c.items.empty() ? L"Нет доступных устройств" : c.items[c.selected];
         else if (c.kind == Kind::Toggle) text=tr(text)+(c.checked?(english?L": on":L": включено"):(english?L": off":L": выключено"));
         else if(c.kind==Kind::Slider) text+=L" · "+std::to_wstring(c.selected)+L"%";
-        text=tr(text);SetWindowTextW(c.window, text.c_str()); InvalidateRect(c.window, nullptr, FALSE);
+        text=tr(text);if(id==UpdateApp)text=english?L"Update":L"Обновить";SetWindowTextW(c.window, text.c_str()); InvalidateRect(c.window, nullptr, FALSE);
     }
     void setChecked(int id, bool value) { controls.at(id).checked = value; updateText(id); }
     void refresh() {
@@ -528,8 +528,13 @@ public:
         RECT r{};GetClientRect(window,&r);FillRect(dc,&r,brush);backdrop.paint(dc,r.right,r.bottom);
         int offset=sheetOffset();
         // Only the bottom edge is rounded: the sheet begins at the window's top edge.
-        for(int i=18;i>0;--i){RECT shadow{0,offset+px(548),r.right,offset+px(548+i)};
-            auto fill=CreateSolidBrush(blend(palette.background,RGB(0,0,0),.03f));FillRect(dc,&shadow,fill);DeleteObject(fill);}
+        {
+            Gdiplus::Graphics shadow(dc);
+            for(int i=0;i<px(18);++i){
+                float fade=1-float(i)/px(18);Gdiplus::SolidBrush ink(Gdiplus::Color(BYTE(38*fade*fade),0,0,0));
+                shadow.FillRectangle(&ink,0,offset+px(548)+i,r.right,1);
+            }
+        }
         auto saved=SaveDC(dc);SetViewportOrgEx(dc,0,offset,nullptr);
         Gdiplus::Graphics graphics(dc);graphics.SetSmoothingMode(Gdiplus::SmoothingModeAntiAlias);
         Gdiplus::GraphicsPath shape;float w=float(r.right),h=float(px(548)),radius=float(px(12));
@@ -628,6 +633,7 @@ public:
 
         if (control.kind == Kind::Choice) label = control.items.empty() ? L"Нет доступных устройств" : control.items[control.selected];
         label=tr(label);
+        if(item.CtlID==UpdateApp)label=english?L"Update":L"Обновить";
         if(item.CtlID==Minimize || item.CtlID==Close || item.CtlID==CloseSettings){
             auto over=item.CtlID==Minimize?palette.hover:(dark?RGB(84,36,47):RGB(246,209,217));
             Gdiplus::Graphics g(dc);g.SetSmoothingMode(Gdiplus::SmoothingModeAntiAlias);
@@ -656,7 +662,8 @@ public:
         }
         bool primary = item.CtlID == Start;
         auto pen = CreatePen(PS_SOLID, 1, palette.line);
-        auto fill = CreateSolidBrush(primary && !disabled ? palette.active : blend(palette.background,palette.hover,pressed?1.f:control.hot));
+        auto base=(control.kind==Kind::Choice||control.kind==Kind::Button)?(dark?RGB(17,18,21):RGB(252,252,253)):palette.background;
+        auto fill = CreateSolidBrush(primary && !disabled ? palette.active : blend(base,palette.hover,pressed?1.f:control.hot));
         auto oldPen = SelectObject(dc, pen), oldBrush = SelectObject(dc, fill);
         if(control.kind==Kind::Segment)SelectObject(dc,GetStockObject(NULL_PEN));
         if (control.kind != Kind::Toggle && (control.kind != Kind::Segment || control.hot>0||pressed))
@@ -677,22 +684,16 @@ public:
 
         SelectObject(dc, oldBrush); SelectObject(dc, oldPen); DeleteObject(fill); DeleteObject(pen);
     }
-    std::wstring choose(bool save, wchar_t const* filter) {
+    std::wstring chooseImage(wchar_t const* filter) {
         wchar_t buffer[32768]{};
-        if (save) {
-            SYSTEMTIME time{}; GetLocalTime(&time);
-            swprintf_s(buffer, L"Screencast-%04u-%02u-%02u-%02u-%02u-%02u.mp4", time.wYear, time.wMonth, time.wDay, time.wHour, time.wMinute, time.wSecond);
-            if(!saveFolder.empty()){auto initial=(std::filesystem::path(saveFolder)/buffer).wstring();wcscpy_s(buffer,initial.c_str());}
-        }
-        OPENFILENAMEW file{}; file.lStructSize = sizeof(file); file.hwndOwner = window;
-        file.lpstrFilter = filter; file.lpstrFile = buffer; file.nMaxFile = 32768;
-        file.lpstrDefExt = save ? L"mp4" : nullptr;
-        if(english){file.lpstrFilter=save?L"MP4 video\0*.mp4\0\0":L"Images\0*.png;*.jpg;*.jpeg;*.bmp\0\0";file.lpstrTitle=save?L"Save recording":L"Choose image";}
-        if(save&&!saveFolder.empty())file.lpstrInitialDir=saveFolder.c_str();
-        file.Flags = OFN_EXPLORER | OFN_NOCHANGEDIR | OFN_PATHMUSTEXIST | (save ? OFN_OVERWRITEPROMPT : OFN_FILEMUSTEXIST);
-        bool ok = save ? GetSaveFileNameW(&file) != FALSE : GetOpenFileNameW(&file) != FALSE;
-        if (!ok && CommDlgExtendedError()) throw winrt::hresult_error(E_FAIL, L"Не удалось открыть диалог выбора файла");
-        return ok ? buffer : L"";
+        OPENFILENAMEW file{};file.lStructSize=sizeof(file);file.hwndOwner=window;
+        file.lpstrFilter=english?L"Images\0*.png;*.jpg;*.jpeg;*.bmp\0\0":filter;
+        file.lpstrFile=buffer;file.nMaxFile=32768;
+        file.lpstrTitle=english?L"Choose image":L"Выберите изображение фона";
+        file.Flags=OFN_EXPLORER|OFN_NOCHANGEDIR|OFN_PATHMUSTEXIST|OFN_FILEMUSTEXIST;
+        bool ok=GetOpenFileNameW(&file)!=FALSE;
+        if(!ok&&CommDlgExtendedError())throw winrt::hresult_error(E_FAIL,L"Не удалось открыть диалог выбора файла");
+        return ok?buffer:L"";
     }
     void start() {
         if (recorder.busy()) { finishing = true; status = L"Завершаю MP4…"; recorder.stop(); enabled(); return; }
@@ -772,7 +773,7 @@ public:
         else if (id == Refresh) refresh();
         else if (id == BackgroundFile) {
             if(!std::filesystem::exists(executableDir()+L"\\models\\rvm_mobilenetv3_fp32.onnx")) {installModel(1);return;}
-            auto value = choose(false, L"Изображения\0*.png;*.jpg;*.jpeg;*.bmp\0\0");
+            auto value = chooseImage(L"Изображения\0*.png;*.jpg;*.jpeg;*.bmp\0\0");
             if (!value.empty()) {
                 loadImage(value); backgroundPath = value;
                 controls[BackgroundFile].label = std::filesystem::path(value).filename().wstring(); updateText(BackgroundFile);

@@ -18,3 +18,14 @@ All items are pending until run on real hardware. Record Windows build, GPU, dri
 - [ ] New destination, unwritable location, existing file, disk below free-space threshold, Stop during initialization, repeated start/stop, Close while recording. Keep existing recordings intact.
 - [ ] 30–60 minute recording; listen and compare claps at beginning/end for drift. Measure CPU, GPU, memory, dropped/repeated frames and actual package size.
 - [ ] Open completed MP4 in Windows Media Player and VLC, including silent video and odd-sized source window.
+
+## Screencast 0.5.0 hardware acceptance
+
+Automated coverage: real screen recording twice while opening/closing the animated settings panel and changing theme/language; final MP4 decoding; live microphone/camera/mirror synthetic recordings; timestamp/collision/folder validation; settings persistence and DPI; installer install/update/removal and legacy Start Menu folder migration.
+
+Still run on a Windows PC with physical devices:
+- [ ] During a recording, move system/microphone volume, toggle microphone and denoise, change denoise strength and listen to the resulting MP4.
+- [ ] Toggle the webcam, move its circle, switch corners/mirror/background/blur and verify the resulting MP4. Device dropdowns retain their previous availability rules.
+- [ ] Disconnect storage during recording; inspect the error and recoverable file. Test a nearly-full disk and a folder denied by ACL.
+- [ ] Confirm Settings from a right-click on free titlebar/workspace; child controls retain their own input behavior. Verify both external links.
+- [ ] Upgrade an existing installation, confirm exactly one root Start Menu shortcut and uninstall through Windows Installed Apps.
