@@ -1,0 +1,80 @@
+/* Soulu palette and caption states; preserve the shared installer's layout and typography. */
+:root {
+  --bg: #fcfcfd;
+  --text: #242628;
+  --muted: #73767b;
+  --line: #e6e7e9;
+  --button: #0671ff;
+  --inverse: #fff;
+  --field: #f3f4f5;
+  --hover: #ededef;
+  --caption-hover: color-mix(in srgb, var(--text) 8%, transparent);
+  --caption-pressed: color-mix(in srgb, var(--text) 14%, transparent);
+  --caption-danger: color-mix(in srgb, #ef4964 22%, var(--bg));
+  --caption-danger-pressed: color-mix(in srgb, #ef4964 34%, var(--bg));
+  color-scheme: light;
+}
+:root[data-theme=dark] {
+  --bg: #202124;
+  --text: #e6e7e9;
+  --muted: #9a9da3;
+  --line: #35363b;
+  --field: #28292d;
+  --hover: #303136;
+  color-scheme: dark;
+}
+button:focus-visible, input:focus-visible,
+input:focus-visible + .switch { outline-color: var(--button); }
+.choices button[aria-pressed=true] {
+  border-color: var(--button);
+  background: var(--button);
+  color: var(--inverse);
+}
+button:hover:not(:disabled):not(.primary):not(.text-button):not(.tools button):not([aria-pressed=true]) {
+  background: var(--hover);
+  filter: none;
+}
+.text-button:hover:not(:disabled) {
+  background: transparent;
+  color: var(--text);
+  filter: none;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+progress { color: var(--button); }
+progress::-webkit-progress-value { background: var(--button); }
+.tools button {
+  position: relative;
+  display: grid;
+  place-items: center;
+  color: var(--text);
+  font-size: 0;
+}
+.tools button::before {
+  content: "";
+  position: absolute;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: transparent;
+  transition: background 120ms ease;
+}
+.tools button:hover:not(:disabled) { filter: none; }
+.tools button:hover:not(:disabled)::before { background: var(--caption-hover); }
+.tools button:active:not(:disabled)::before { background: var(--caption-pressed); }
+.tools #close:hover:not(:disabled)::before { background: var(--caption-danger); }
+.tools #close:active:not(:disabled)::before { background: var(--caption-danger-pressed); }
+.tools button::after {
+  content: "";
+  position: relative;
+  width: 16px;
+  height: 16px;
+  background: currentColor;
+  mask: var(--caption-icon) center / contain no-repeat;
+}
+.tools #minimize {
+  --caption-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 16 16'%3E%3Cpath d='M3 8h10' fill='none' stroke='black' stroke-width='1.25' stroke-linecap='round'/%3E%3C/svg%3E");
+}
+.tools #close {
+  --caption-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 16 16'%3E%3Cpath d='m4 4 8 8M12 4l-8 8' fill='none' stroke='black' stroke-width='1.25' stroke-linecap='round'/%3E%3C/svg%3E");
+}

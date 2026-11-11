@@ -36,6 +36,15 @@ if(!$CoreRoot){
 $core=(Resolve-Path -LiteralPath $CoreRoot).Path
 & (Join-Path $PSScriptRoot 'patch-installer-branding.ps1') -CoreRoot $core -Version $Version
 $sourceCommit=(git -C $repo rev-parse HEAD).Trim()
+# Apply only product-local presentation, restoring the pinned core after building/review.
+$stylePath=Join-Path $core 'core/web/style.css'
+$styleBytes=[IO.File]::ReadAllBytes($stylePath)
+$theme=[IO.File]::ReadAllText((Join-Path $repo 'installer/soulu-theme.css'))
+try{
+ [IO.File]::WriteAllText($stylePath,[Text.Encoding]::UTF8.GetString($styleBytes)+"`n"+$theme,[Text.UTF8Encoding]::new($false))
 & (Join-Path $core 'build.ps1') -Product 'screencast' -PayloadPath $PayloadPath -Version $Version -OutFile $OutFile -ExtensionPath $ExtensionPath -ExpectedExecutable $ExpectedExecutable -ProductCommit $sourceCommit -Go $Go
 if($LASTEXITCODE){throw 'Shared installer build failed'}
 if($TestUI){& (Join-Path $core 'test-ui.ps1') -OutputDirectory (Join-Path $repo '.tmp/installer-review')}
+}finally{
+ [IO.File]::WriteAllBytes($stylePath,$styleBytes)
+}
