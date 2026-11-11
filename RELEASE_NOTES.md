@@ -1,3 +1,10 @@
+# Screencast 0.5.7
+
+- Updated installer light and dark colors to match Soulu.
+- Added blue active selections and focus indicators.
+- Updated minimize/close glyphs and circular hover/pressed backgrounds, including the pink-red close highlight.
+- Preserved installer layout, typography, installation behavior and application functionality.
+
 # Screencast 0.5.6
 
 - Cache the blurred background upload and rasterize the complete moving sheet into one transparent Direct2D layer per transition.
