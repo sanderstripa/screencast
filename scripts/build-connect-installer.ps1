@@ -6,7 +6,7 @@ param(
  [switch]$TestUI
 )
 $ErrorActionPreference='Stop'
-if([IO.Path]::GetFileName($OutFile) -ne "Screencast-$Version-x64.exe"){throw 'Installer filename must include the product version'}
+if([IO.Path]::GetFileName($OutFile) -ne "Screencast-$Version-Release-x64.exe"){throw 'Installer filename must include the product version'}
 $repo=(Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 if(!$CoreRoot){
  $localCore=Join-Path $repo 'installer-core'

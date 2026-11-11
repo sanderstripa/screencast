@@ -15,7 +15,9 @@
   color-scheme: light;
 }
 :root[data-theme=dark] {
-  --bg: #202124;
+  --bg: #08090b;
+  --button: #e3e4df;
+  --inverse: #08090b;
   --text: #e6e7e9;
   --muted: #9a9da3;
   --line: #35363b;
@@ -78,3 +80,7 @@ progress::-webkit-progress-value { background: var(--button); }
 .tools #close {
   --caption-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 16 16'%3E%3Cpath d='m4 4 8 8M12 4l-8 8' fill='none' stroke='black' stroke-width='1.25' stroke-linecap='round'/%3E%3C/svg%3E");
 }
+
+/* Explicit centers are independent of caption font and hit-area dimensions. */
+.tools button::before { left:50%; top:50%; transform:translate(-50%,-50%); pointer-events:none; }
+.tools button::after { position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); pointer-events:none; }

@@ -99,7 +99,7 @@ jobs:
           python tests/verify_themes.py build/smoke
       - name: Build shared CONNECT Installer
         run: |
-          ./scripts/build-connect-installer.ps1 -PayloadPath "$PWD/dist/Screencast-Windows-x64.zip" -Version '0.5.7' -OutFile "$PWD/dist/Screencast-0.5.7-x64.exe" -TestUI
+          ./scripts/build-connect-installer.ps1 -PayloadPath "$PWD/dist/Screencast-Windows-x64.zip" -Version '1.5.8' -OutFile "$PWD/dist/Screencast-1.5.8-Release-x64.exe" -TestUI
 
       - name: Verify app, installer and shell branding
         shell: pwsh
@@ -113,7 +113,7 @@ jobs:
             $link=$shell.CreateShortcut((Join-Path $folder $name))
             $link.TargetPath=$app;$link.IconLocation="$icon,0";$link.Save()
           }
-          ./tests/verify_shell.ps1 -App $app -Setup "$PWD/dist/Screencast-0.5.7-x64.exe" -Shortcuts $folder -IconsOnly
+          ./tests/verify_shell.ps1 -App $app -Setup "$PWD/dist/Screencast-1.5.8-Release-x64.exe" -Shortcuts $folder -IconsOnly
 
       - uses: actions/upload-artifact@v4
         with:
@@ -121,8 +121,8 @@ jobs:
           path: dist/Screencast-Windows-x64.zip
       - uses: actions/upload-artifact@v4
         with:
-          name: Screencast-0.5.7-x64
-          path: dist/Screencast-0.5.7-x64.exe
+          name: Screencast-1.5.8-Release-x64
+          path: dist/Screencast-1.5.8-Release-x64.exe
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -136,19 +136,19 @@ jobs:
         run: |
           gh release view "$env:RELEASE_TAG" *> $null
           if($LASTEXITCODE -ne 0){
-            gh release create "$env:RELEASE_TAG" dist/Screencast-0.5.7-x64.exe dist/Screencast-Windows-x64.zip --verify-tag --title "Screencast $env:RELEASE_TAG" --notes-file RELEASE_NOTES.md
+            gh release create "$env:RELEASE_TAG" dist/Screencast-1.5.8-Release-x64.exe dist/Screencast-Windows-x64.zip --verify-tag --title "Screencast $env:RELEASE_TAG" --notes-file RELEASE_NOTES.md
             if($LASTEXITCODE){throw 'Release publication failed'}
           }
-      - name: Publish verified 0.5.7 release
+      - name: Publish verified 1.5.8 release
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release view v0.5.7 *> $null
+          gh release view v1.5.8 *> $null
           if ($LASTEXITCODE -eq 0) { throw 'Refusing to overwrite an existing release' }
-          $files = @('dist/Screencast-0.5.7-x64.exe','dist/Screencast-Windows-x64.zip')
+          $files = @('dist/Screencast-1.5.8-Release-x64.exe','dist/Screencast-Windows-x64.zip')
           $sums = foreach ($file in $files) { "$((Get-FileHash -LiteralPath $file -Algorithm SHA256).Hash.ToLowerInvariant())  $([IO.Path]::GetFileName($file))" }
           $sums | Set-Content -LiteralPath SHA256SUMS.txt -Encoding ascii
-          gh release create v0.5.7 dist/Screencast-0.5.7-x64.exe dist/Screencast-Windows-x64.zip SHA256SUMS.txt --target $env:GITHUB_SHA --latest --title 'Screencast v0.5.7' --notes-file RELEASE_NOTES.md
+          gh release create v1.5.8 dist/Screencast-1.5.8-Release-x64.exe dist/Screencast-Windows-x64.zip SHA256SUMS.txt --target $env:GITHUB_SHA --latest --title 'Screencast v1.5.8' --notes-file RELEASE_NOTES.md
           if ($LASTEXITCODE -ne 0) { throw 'Verified release publication failed' }
