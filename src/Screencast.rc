@@ -4,8 +4,8 @@
 4 RCDATA "Montserrat.ttf"
 
 1 VERSIONINFO
- FILEVERSION 1,5,8,0
- PRODUCTVERSION 1,5,8,0
+ FILEVERSION 1,5,9,0
+ PRODUCTVERSION 1,5,9,0
  FILETYPE 1
 BEGIN
  BLOCK "StringFileInfo"
@@ -14,8 +14,8 @@ BEGIN
   BEGIN
    VALUE "FileDescription", "Screencast\0"
    VALUE "ProductName", "Screencast\0"
-   VALUE "FileVersion", "1.5.8.0\0"
-   VALUE "ProductVersion", "1.5.8\0"
+   VALUE "FileVersion", "1.5.9.0\0"
+   VALUE "ProductVersion", "1.5.9\0"
   END
  END
  BLOCK "VarFileInfo"

@@ -1,7 +1,7 @@
 # Approved graphite/glass icon family
 
-Version 0.4.7: the first-column concept approved on 27 October 2026.
-Dark continuous-corner square; restrained glass glyph; no ribbon. Transparent exterior corners.
+Round variant approved on 14 November 2026.
+Circular graphite background; unchanged lavender screen and coral recording dot; no ribbon. Transparent exterior.
 
 Native SVG is the editable source. `scripts/render-app-icons.cjs` deterministically renders each physical size from vector geometry; install the development-only `sharp` package and run `node scripts/render-app-icons.cjs`. Do not run historical ribbon generators.
 
