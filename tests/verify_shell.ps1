@@ -87,8 +87,13 @@ foreach($file in @('Screencast.lnk','Uninstall.lnk')) {
 $w=0;$h=0;$setupPixels=[ShellCheck]::Resource($Setup,[ref]$w,[ref]$h)
 if($w-ne32-or$h-ne32){throw 'Installer icon is not 32x32'}
 $appPixels=[ShellCheck]::Resource($App,[ref]$w,[ref]$h)
-if([Convert]::ToBase64String($setupPixels)-ne[Convert]::ToBase64String($appPixels)){throw 'App and installer resource icons differ'}
-if($IconsOnly){'Shortcut icons and app/installer resource images match.';return}
+$expectedApp=[ShellCheck]::Resource($icon,[ref]$w,[ref]$h)
+if([Convert]::ToBase64String($expectedApp)-ne[Convert]::ToBase64String($appPixels)){throw 'App resource icon changed'}
+$setupIcon=Join-Path $PSScriptRoot '../installer/Screencast-setup.ico'
+$expectedSetup=[ShellCheck]::Resource($setupIcon,[ref]$w,[ref]$h)
+if([Convert]::ToBase64String($expectedSetup)-ne[Convert]::ToBase64String($setupPixels)){throw 'Installer does not use its dedicated icon'}
+if([Convert]::ToBase64String($setupPixels)-eq[Convert]::ToBase64String($appPixels)){throw 'Installer still uses the application icon'}
+if($IconsOnly){'Original app/shortcut icons and dedicated installer icon verified.';return}
 $launchers=@();foreach($folder in @('Desktop','StartMenu')) {
  $directory=Join-Path $Shortcuts $folder;New-Item -ItemType Directory -Path $directory -Force|Out-Null
  $launcher=Join-Path $directory 'Screencast.lnk';Copy-Item -LiteralPath (Join-Path $Shortcuts 'Screencast.lnk') -Destination $launcher -Force;$launchers+=$launcher
@@ -100,7 +105,7 @@ try {
  if($window-eq[IntPtr]::Zero){throw 'Main window did not start'}
  foreach($kind in @(0,1,2)) {
   $handle=[ShellCheck]::SendMessage($window,0x7f,[IntPtr]$kind,[IntPtr]96);$pixels=[ShellCheck]::Icon($handle,[ref]$w,[ref]$h)
-  if($w-ne32-or$h-ne32-or[Convert]::ToBase64String($pixels)-ne[Convert]::ToBase64String($setupPixels)){throw 'A window icon request differs from the installer'}
+  if($w-ne32-or$h-ne32-or[Convert]::ToBase64String($pixels)-ne[Convert]::ToBase64String($appPixels)){throw 'A window icon request differs from the application'}
  }
  # Exercise ordinary shortcuts through the same shell path as desktop/Start.
  foreach($launcher in $launchers) {foreach($attempt in 1..3) {
@@ -119,7 +124,7 @@ try {
  [ShellCheck]::SendMessage($window,0x232,[IntPtr]::Zero,[IntPtr]::Zero)|Out-Null
  $savedPosition=New-Object ShellCheck+Rect
  [ShellCheck]::GetWindowRect($window,[ref]$savedPosition)|Out-Null
- 'Shortcuts: native 32/48/64/128 icons; all window icon requests match installer; six repeat launches restore one window.'
+ 'Shortcuts: native 32/48/64/128 icons; all window icon requests match application; six repeat launches restore one window.'
 }finally {
  if($window-ne[IntPtr]::Zero){[ShellCheck]::SendMessage($window,0x10,[IntPtr]::Zero,[IntPtr]::Zero)|Out-Null}
  if(-not$primary.WaitForExit(15000)){$primary.Kill();throw 'Test application did not close'}

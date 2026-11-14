@@ -1,7 +1,7 @@
 param([Parameter(Mandatory=$true)][string]$CoreRoot,[Parameter(Mandatory=$true)][string]$Version)
 $ErrorActionPreference='Stop'
 $repo=(Resolve-Path (Join-Path $PSScriptRoot '..')).Path
-Copy-Item -LiteralPath (Join-Path $repo 'assets/Screencast.ico') -Destination (Join-Path $CoreRoot 'products/screencast.ico') -Force
+Copy-Item -LiteralPath (Join-Path $repo 'installer/Screencast-setup.ico') -Destination (Join-Path $CoreRoot 'products/screencast.ico') -Force
 Copy-Item -LiteralPath (Join-Path $repo 'assets/Screencast-256.png') -Destination (Join-Path $CoreRoot 'core/web/assets/icon.png') -Force
 $path=Join-Path $CoreRoot 'adapters/screencast/adapter_windows.go'
 # Product-local adapter keeps this change isolated from all other CONNECT installers.

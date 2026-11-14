@@ -1,5 +1,5 @@
 1 24 "@CMAKE_CURRENT_SOURCE_DIR@/src/app.manifest"
-101 ICON "@CMAKE_CURRENT_SOURCE_DIR@/assets/Screencast.ico"
+101 ICON "@CMAKE_CURRENT_SOURCE_DIR@/installer/Screencast-setup.ico"
 201 RCDATA "@SCREENCAST_PAYLOAD@"
 202 RCDATA "@CMAKE_CURRENT_SOURCE_DIR@/assets/Montserrat.ttf"
 #include "installer_visual_assets.rc"
