@@ -28,7 +28,7 @@ for name,expected in (("light",(255,255,255)),("dark",(8,9,11))):
     left=(image.shape[1]-720)//2
     surface=np.array((32,33,36) if name=="dark" else (252,252,253))
     assert np.max(abs(settings[8,left+30].astype(int)-surface))<=1,"Sheet not attached to top"
-    for top,bottom,x1,x2 in ((13,52,28,300),(100,134,422,692),(184,220,422,692),(274,310,422,692),(405,463,28,692),(528,552,316,404)):
+    for top,bottom,x1,x2 in ((13,52,28,300),(100,134,422,692),(142,178,422,692),(226,262,422,692),(316,352,422,692),(405,463,28,692),(528,552,316,404)):
         assert np.ptp(settings[top:bottom,left+x1:left+x2])>25,"Missing Torrent-style settings content"
     assert not np.array_equal(settings[82:480,left:left+720],settings_en[82:480,left:left+720]),"Settings translation missing"
     assert not np.array_equal(image[100:522,24:976],load("-en")[100:522,24:976]),"Main translation missing"

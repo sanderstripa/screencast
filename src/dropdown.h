@@ -1,4 +1,5 @@
 #pragma once
+#include "capture_exclusion.h"
 #include <windows.h>
 #include <windowsx.h>
 #include <dwmapi.h>
@@ -101,6 +102,9 @@ public:
         cls.hCursor=LoadCursorW(nullptr,IDC_ARROW);cls.lpszClassName=L"ScreencastDropdown";RegisterClassExW(&cls);
         window=CreateWindowExW(WS_EX_TOOLWINDOW,cls.lpszClassName,L"",WS_POPUP,x,y,width,height,owner,nullptr,cls.hInstance,this);
         if(!window)return 0;
+        if(owner && hasCaptureExclusion(owner) && !excludeFromCapture(window)){
+            DestroyWindow(window);return 0;
+        }
         SetWindowRgn(window,CreateRoundRectRgn(0,0,width+1,height+1,px(16),px(16)),FALSE);
         ShowWindow(window,SW_SHOW);SetFocus(window);SetCapture(window);
         if(onOpened)onOpened(window);

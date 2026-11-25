@@ -150,7 +150,7 @@ void Recorder::stop() { stop_ = true; }
 void Recorder::join() { if (worker_.joinable()) worker_.join(); }
 void Recorder::start(Settings settings, HWND notify) {
     if (busy_) return;
-    join(); stop_ = false; epoch_ = 0; busy_ = true; preview_=nullptr;
+    join(); stop_ = false; duration_ = 0; pauseRequested_ = false; busy_ = true; preview_=nullptr;
     webcam_=nullptr; settings.live->overlayReady=0;
     worker_ = std::thread([this, settings = std::move(settings), notify] {
         auto result = std::make_unique<RecordingResult>();
@@ -202,10 +202,13 @@ void Recorder::start(Settings settings, HWND notify) {
             bool audioTrack=system || mic || settings.micAvailable;
             writer = std::make_unique<Writer>(temporary, (image.width + 1) & ~1, (image.height + 1) & ~1, settings.fps, audioTrack);
             hardware_=writer->hardware();
-            int64_t epoch = clock100ns(); epoch_ = epoch;
+            const int64_t epoch = clock100ns();
             if (system) system->start(epoch); if (mic) mic->start(epoch);
             recording_ = true;
-            int64_t videoFrame{}, audioFrame{}, nextDiskCheck{}, stopAt{};
+            int64_t videoFrame{}, audioFrame{}, nextDiskCheck{};
+            int64_t omitted{}, pauseBoundary{-1}, stopAt{-1};
+            // Align cuts to both an AAC input block and a video frame.
+            constexpr int64_t cutInterval = 1000000;
             std::deque<Image> videoQueue;
             std::deque<std::shared_ptr<Image const>> cameraQueue;
             auto cameraImage=camera?camera->latestFrame():nullptr;
@@ -220,9 +223,13 @@ void Recorder::start(Settings settings, HWND notify) {
             // Delay output by 150 ms so audio packets arrive before their timeline is mixed.
             constexpr int64_t latency = 1500000;
             while (true) {
-                auto now = clock100ns() - epoch;
-                if (stop_ && !stopAt) stopAt = std::max<int64_t>(now, 1);
-                if(!stopAt) {
+                auto wallTime = clock100ns() - epoch;
+                auto now = wallTime - omitted;
+                if (stop_ && stopAt < 0) stopAt = pauseBoundary >= 0 ? pauseBoundary : now;
+                if (stopAt < 0 && pauseRequested_ && pauseBoundary < 0) {
+                    pauseBoundary = now / cutInterval * cutInterval;
+                }
+                if(stopAt < 0) {
                     bool wantMic=settings.live->micEnabled && settings.micAvailable;
                     if(mic && !wantMic){mic->poll();micTail=mic->timeline();}
                     if(setCaptureEnabled(mic,wantMic,[&]{auto value=std::make_unique<AudioCapture>(true,AudioMode::Off,settings.micId,0);value->start(epoch);return value;}))suppressor=dsp::SpectralDenoiser{};
@@ -234,9 +241,9 @@ void Recorder::start(Settings settings, HWND notify) {
                 if (system) system->poll(); if (mic) mic->poll();
                 if (process.value && WaitForSingleObject(process.value, 0) == WAIT_OBJECT_0)
                     throw winrt::hresult_error(E_ABORT, L"Приложение, звук которого записывался, завершилось");
-                if(now>=nextCapture) {
+                if(wallTime>=nextCapture) {
                     Image fresh; if (capture.next(fresh)) videoQueue.push_back(std::move(fresh));
-                    nextCapture=now+10000000/settings.fps;
+                    nextCapture=wallTime+10000000/settings.fps;
                     while(videoQueue.size()>16) videoQueue.pop_front();
                 }
                 if (camera) {
@@ -247,9 +254,11 @@ void Recorder::start(Settings settings, HWND notify) {
                         while(cameraQueue.size()>16) cameraQueue.pop_front();
                     }
                 }
-                int64_t ready = std::min(now - latency, stopAt ? stopAt : now);
-                while (videoFrame * 10000000 / settings.fps <= ready) {
-                    auto due = epoch + videoFrame * 10000000 / settings.fps;
+                auto boundary = stopAt >= 0 ? stopAt : pauseBoundary;
+                int64_t ready = now - latency;
+                if (boundary >= 0) ready = std::min(ready, boundary);
+                while (videoFrame * 10000000 / settings.fps < ready) {
+                    auto due = epoch + omitted + videoFrame * 10000000 / settings.fps;
                     while (!videoQueue.empty() && videoQueue.front().time100ns <= due) {
                         image = std::move(videoQueue.front()); videoQueue.pop_front();
                     }
@@ -265,7 +274,7 @@ void Recorder::start(Settings settings, HWND notify) {
                     preview_=std::make_shared<Image>(resizeImage(output,480,std::max(1,output.height*480/output.width)));
                     writer->video(output, videoFrame++);
                     // Falling behind by >3 s signals overload instead of allocating an unbounded queue.
-                    if (clock100ns() - epoch - videoFrame * 10000000 / settings.fps > 30000000)
+                    if (boundary < 0 && clock100ns() - epoch - omitted - videoFrame * 10000000 / settings.fps > 30000000)
                         throw winrt::hresult_error(E_FAIL, L"Компьютер не успевает кодировать запись. Уменьшите разрешение источника или выключите замену фона");
                 }
                 if (audioTrack) {
@@ -273,14 +282,15 @@ void Recorder::start(Settings settings, HWND notify) {
                     while (audioFrame + 480 <= readyFrames) {
                         float strength=settings.live->denoise?settings.live->noiseStrength.load():0.f;
                         auto const& microphone=mic?mic->timeline():micTail;
-                        if(strength>0) suppressor.render(microphone,audioFrame,480,strength,cleanMic);
+                        auto inputFrame = audioFrame + omitted * dsp::Rate / 10000000;
+                        if(strength>0) suppressor.render(microphone,inputFrame,480,strength,cleanMic);
                         pcm.resize(960);
                         for(int i=0;i<480;++i) {
                             // 20 ms gain ramp prevents clicks when changing a live slider.
-                            systemGain+=(settings.live->systemGain.load()-systemGain)*.001f;
+                            systemGain+=((settings.live->systemMuted ? 0.f : settings.live->systemGain.load())-systemGain)*.001f;
                             micGain+=((settings.live->micEnabled?settings.live->micGain.load():0.f)-micGain)*.001f;
-                            auto a=system?system->timeline().at(audioFrame+i):std::array<float,2>{};
-                            auto b=microphone.at(audioFrame+i);
+                            auto a=system?system->timeline().at(inputFrame+i):std::array<float,2>{};
+                            auto b=microphone.at(inputFrame+i);
                             if(strength>0) b={cleanMic[i],cleanMic[i]};
                             pcm[i*2]=dsp::pcm16(a[0]*systemGain+b[0]*micGain);
                             pcm[i*2+1]=dsp::pcm16(a[1]*systemGain+b[1]*micGain);
@@ -288,14 +298,22 @@ void Recorder::start(Settings settings, HWND notify) {
                         writer->audio(pcm, audioFrame); audioFrame += 480;
                     }
                 }
-                if (stopAt && now >= stopAt + latency) break;
-                if (now >= nextDiskCheck) {
+                duration_ = videoFrame * 10000000 / settings.fps;
+                if (stopAt >= 0 && now >= stopAt + latency) break;
+                if (pauseBoundary >= 0 && !pauseRequested_ && now >= pauseBoundary + latency) {
+                    omitted = wallTime - pauseBoundary;
+                    pauseBoundary = -1;
+                    videoQueue.clear();
+                    cameraQueue.clear();
+                    suppressor = dsp::SpectralDenoiser{};
+                }
+                if (wallTime >= nextDiskCheck) {
                     ULARGE_INTEGER available{};
                     auto directory = std::filesystem::path(settings.path).parent_path().wstring();
                     if (!GetDiskFreeSpaceExW(directory.c_str(), &available, nullptr, nullptr)) check(HRESULT_FROM_WIN32(GetLastError()));
                     if (available.QuadPart < 32 * 1024 * 1024)
                         throw winrt::hresult_error(HRESULT_FROM_WIN32(ERROR_DISK_FULL), L"Недостаточно места для продолжения записи");
-                    nextDiskCheck = now + 10000000;
+                    nextDiskCheck = wallTime + 10000000;
                 }
                 std::this_thread::sleep_for(std::chrono::milliseconds(3));
             }

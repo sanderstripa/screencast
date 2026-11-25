@@ -1,4 +1,5 @@
 #pragma once
+#include "capture_exclusion.h"
 #include "paint.h"
 #include "ui_palette.h"
 #include <windowsx.h>
@@ -45,6 +46,9 @@ public:
         RECT r{};if(owner)GetWindowRect(owner,&r);else SystemParametersInfoW(SPI_GETWORKAREA,0,&r,0);window=CreateWindowExW(WS_EX_DLGMODALFRAME,cls.lpszClassName,caption.c_str(),WS_POPUP|WS_SYSMENU|WS_CLIPCHILDREN,
             r.left+(r.right-r.left-px(520))/2,r.top+(r.bottom-r.top-px(316))/2,px(520),px(316),owner,nullptr,cls.hInstance,this);
         if(!window)return false;
+        if(owner && hasCaptureExclusion(owner) && !excludeFromCapture(window)){
+            DestroyWindow(window);return false;
+        }
         button=CreateWindowW(L"BUTTON",close.c_str(),WS_CHILD|WS_VISIBLE|WS_TABSTOP|BS_OWNERDRAW,px(360),px(264),px(136),px(36),window,reinterpret_cast<HMENU>(IDOK),cls.hInstance,nullptr);
         if(!secondary.empty())CreateWindowW(L"BUTTON",secondary.c_str(),WS_CHILD|WS_VISIBLE|WS_TABSTOP|BS_OWNERDRAW,px(212),px(264),px(136),px(36),window,reinterpret_cast<HMENU>(IDCANCEL),cls.hInstance,nullptr);
         EnableWindow(owner,FALSE);ShowWindow(window,SW_SHOW);SetFocus(button);

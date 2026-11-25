@@ -27,6 +27,8 @@
 #include "settings_backdrop.h"
 #include "torrent_visual.h"
 #include "recording_path.h"
+#include "recording_panel.h"
+#include <optional>
 
 int encoderSelfTest(std::wstring const& directory);
 int cameraSelfTest(std::wstring const& directory);
@@ -36,7 +38,7 @@ namespace {
 enum Id { SourceKind = 100, Source, Refresh, OutputMode, OutputDevice, Microphone, MicDevice,
     Denoise, Webcam, CameraDevice, Corner, Background, BackgroundFile, Save, Start, ThemeSystem, ThemeLight, ThemeDark,
     SystemVolume,MicVolume,NoiseStrength,BlurStrength,BackgroundPreset,CameraMirror,
-    OpenSettings,Back,Language,SaveFolder,Minimize,Close,LanguageEnglish,CloseSettings,UpdateApp,ConnectLink };
+    OpenSettings,Back,Language,SaveFolder,Minimize,Close,LanguageEnglish,CloseSettings,UpdateApp,ConnectLink,PanelPosition,ReturnToRecording };
 enum class Kind { Button, Choice, Toggle, Segment, Slider };
 struct Control {
     HWND window{}; Kind kind{}; std::wstring label;
@@ -55,6 +57,7 @@ public:
     std::filesystem::path recordingTestDirectory;
     int recordingTestStage{},recordingTestRun{};
     ULONGLONG recordingTestTime{};
+    int64_t pausedTestDuration{};
     std::wstring previousTestPath;
     void recordingTestFailure(std::string const& reason){
         std::ofstream(recordingTestDirectory/L"recording-ui-error.txt")<<reason;
@@ -70,6 +73,11 @@ public:
             }else if(recordingTestStage==1){
                 if(now-recordingTestTime>15000)throw std::runtime_error("recording did not start");
                 if(!recorder.recording())return;
+                if(!panel.settledHidden() || IsWindowVisible(window) || !hasCaptureExclusion(window))
+                    throw std::runtime_error("compact panel did not hide before capture");
+                panelCommand(PanelAction::Home);
+                if(panel.open() || !IsWindowVisible(window))
+                    throw std::runtime_error("main window did not return during capture");
                 controls[SystemVolume].selected=75;controls[MicVolume].selected=30;
                 setChecked(Denoise,true);controls[NoiseStrength].selected=80;
                 controls[CameraMirror].checked=true;controls[Background].selected=1;controls[BlurStrength].selected=60;updateLive();
@@ -82,15 +90,29 @@ public:
                 if(settingsOpen||sheetProgress!=0||!recorder.recording()||live->systemGain!=.75f||live->micGain!=.3f||!live->cameraMirror)
                     throw std::runtime_error("settings close interrupted capture or changed live parameters");
                 BOOL motion=TRUE;SystemParametersInfoW(SPI_GETCLIENTAREAANIMATION,0,&motion,0);if(motion&&(animationLayerBuilds!=1||animationFrames<2))throw std::runtime_error("closing animation did not reuse its cached layer");
-                start();recordingTestStage=4;recordingTestTime=now;
-            }else if(recordingTestStage==4&&now-recordingTestTime>15000)throw std::runtime_error("MP4 finalization timed out");
+                if (!compact(false)) throw std::runtime_error("could not return to the panel");
+                panelCommand(PanelAction::Pause);
+                recordingTestStage=4;recordingTestTime=now;
+            }else if(recordingTestStage==4&&now-recordingTestTime>500){
+                if(!recorder.paused())throw std::runtime_error("recorder did not pause");
+                pausedTestDuration=recorder.elapsed();
+                recordingTestStage=5;recordingTestTime=now;
+            }else if(recordingTestStage==5&&now-recordingTestTime>1200){
+                if(recorder.elapsed()!=pausedTestDuration)throw std::runtime_error("paused time was added to the recording");
+                panelCommand(PanelAction::Pause);
+                recordingTestStage=6;recordingTestTime=now;
+            }else if(recordingTestStage==6&&now-recordingTestTime>1400){
+                if(recorder.paused()||recorder.elapsed()<=pausedTestDuration)throw std::runtime_error("recorder did not resume");
+                panelCommand(PanelAction::Stop);
+                recordingTestStage=7;recordingTestTime=now;
+            }else if(recordingTestStage==7&&now-recordingTestTime>15000)throw std::runtime_error("MP4 finalization timed out");
         }catch(...){recordingTestFailure(winrt::to_string(errorText()));}
     }
     void recordingTestResult(RecordingResult const& result){
         if(!result.success||std::filesystem::path(result.path).parent_path()!=recordingTestDirectory||!std::filesystem::exists(result.path)||std::filesystem::file_size(result.path)==0||previousTestPath==result.path){recordingTestFailure("MP4 missing, invalid destination or duplicate path");return;}
         previousTestPath=result.path;
         if(++recordingTestRun==2){
-            std::ofstream(recordingTestDirectory/L"recording-ui.txt")<<"PASS: two real screen recordings started without file dialogs, live gains/mirror settings retained, settings animated open/closed and theme/language changed while capture continued, MP4 finalization and unique destinations. Physical microphone/camera capture requires hardware.\n";
+            std::ofstream(recordingTestDirectory/L"recording-ui.txt")<<"PASS: two real screen recordings started without file dialogs, live gains/mirror settings retained, compact mode and main window exchanged during capture, pause excluded from the timer, settings animated open/closed, MP4 finalization and unique destinations. Physical microphone/camera capture requires hardware.\n";
             KillTimer(window,7);DestroyWindow(window);return;
         }
         recordingTestStage=0;
@@ -109,7 +131,7 @@ public:
     void renderWorking(HDC dc){
         paintWorking(dc);
         for(auto const& [id,c]:controls){
-            if(settingControl(id))continue;
+            if(settingControl(id) || (id==ReturnToRecording && !IsWindowVisible(c.window)))continue;
             RECT r{};GetWindowRect(c.window,&r);MapWindowPoints(nullptr,window,reinterpret_cast<POINT*>(&r),2);
             auto state=SaveDC(dc);SetViewportOrgEx(dc,r.left,r.top,nullptr);IntersectClipRect(dc,0,0,r.right-r.left,r.bottom-r.top);
             DRAWITEMSTRUCT item{};item.CtlID=id;item.hDC=dc;item.rcItem={0,0,r.right-r.left,r.bottom-r.top};
@@ -171,6 +193,65 @@ public:
     std::vector<Device> microphones, outputs, cameras;
     Recorder recorder;
     CameraOverlay overlay;
+    RecordingPanel panel;
+    PanelEdge panelEdge{PanelEdge::Right};
+    std::optional<Settings> pendingRecording;
+    HMONITOR recordingMonitor{};
+    bool sessionSound{}, soundMuted{};
+    bool stopShortcut{};
+
+    void setPanelEdge(PanelEdge value) {
+        panelEdge = value;
+        controls.at(PanelPosition).selected = static_cast<int>(value);
+        updateText(PanelPosition);
+        savePreferences();
+    }
+
+    void muteRecordingSound() {
+        if (!recorder.recording() || !sessionSound || finishing) return;
+        soundMuted = !soundMuted;
+        live->systemMuted = soundMuted;
+        savePreferences();
+        enabled();
+    }
+
+    bool compact(bool firstStart) {
+        if (!excludeFromCapture(window) ||
+            !panel.open(window, recordingMonitor, panelEdge, palette, english, recorder, *live, sessionSound, firstStart)) {
+            SetWindowDisplayAffinity(window, WDA_NONE);
+            notice(english ? L"Windows could not exclude the recording controls from capture."
+                           : L"Windows не смогла исключить интерфейс Screencast из захвата.");
+            return false;
+        }
+        stopShortcut = stopShortcut || RegisterHotKey(window, 8, MOD_CONTROL | MOD_SHIFT | MOD_NOREPEAT, VK_F10);
+        saveWindowPosition();
+        BOOL animations=TRUE;
+        SystemParametersInfoW(SPI_GETCLIENTAREAANIMATION,0,&animations,0);
+        if (!animations || !AnimateWindow(window, 150, AW_HIDE | AW_BLEND)) ShowWindow(window, SW_HIDE);
+        return true;
+    }
+
+    void restoreMain(bool animate) {
+        panel.close();
+        if (IsWindowVisible(window) && !IsIconic(window)) return;
+        BOOL animations=TRUE;
+        SystemParametersInfoW(SPI_GETCLIENTAREAANIMATION,0,&animations,0);
+        if (!animate || !animations || IsIconic(window) || !AnimateWindow(window, 150, AW_ACTIVATE | AW_BLEND))
+            ShowWindow(window, SW_RESTORE);
+        SetForegroundWindow(window);
+    }
+
+    void panelCommand(PanelAction action) {
+        switch (action) {
+        case PanelAction::Pause: if(!finishing) recorder.togglePause(); break;
+        case PanelAction::Sound: muteRecordingSound(); break;
+        case PanelAction::Home:
+            if(recorder.recording() && !finishing) { restoreMain(true); enabled(); }
+            break;
+        case PanelAction::Stop: if(recorder.busy() || pendingRecording) start(); break;
+        }
+    }
+
     HANDLE modelDownload{};int pendingBackground{};
     ULONGLONG lastStatusPaint{};
     void installModel(int mode) {
@@ -183,6 +264,13 @@ public:
         CloseHandle(process.hThread);modelDownload=process.hProcess;status=L"Загружаю эффекты фона (15 МБ)…";enabled();
     }
     void tick() {
+        if (pendingRecording && panel.settledHidden()) {
+            auto settings = std::move(*pendingRecording);
+            pendingRecording.reset();
+            DwmFlush();
+            recorder.start(std::move(settings), window);
+            enabled();
+        }
         overlay.update(recorder.busy() && live->cameraEnabled?recorder.webcam():nullptr);
         if((modelDownload||finishing)&&!settingsOpen){RECT progress{px(662),px(532),px(976),px(536)};InvalidateRect(window,&progress,FALSE);}
         if(recorder.busy()) {
@@ -503,7 +591,7 @@ public:
     }
     void setChecked(int id, bool value) { controls.at(id).checked = value; updateText(id); }
     void refresh() {
-        if (recorder.busy() || finishing) return;
+        if (recorder.busy() || pendingRecording || finishing) return;
         // Keep selections by stable IDs / handles when devices or windows are refreshed.
         Target previous{};
         auto const& old = controls[SourceKind].selected == 0 ? screens : windowList;
@@ -566,12 +654,28 @@ public:
         setItems(OutputDevice, std::move(names)); previousAudioMode = mode;
     }
     void enabled() {
-        bool idle = !recorder.busy() && !finishing;
+        bool idle = !recorder.busy() && !pendingRecording && !finishing;
+        controls[OutputMode].kind = idle ? Kind::Choice : Kind::Button;
+        controls[OutputMode].label = idle ? L"Выходной звук" :
+            sessionSound ? (soundMuted ? (english?L"Unmute recording audio":L"Включить звук записи") :
+                (english?L"Mute recording audio":L"Выключить звук записи")) :
+                (english?L"Audio source selected before recording":L"Источник звука выбирается до записи");
+        updateText(OutputMode);
+        if(auto returnButton=controls.find(ReturnToRecording);returnButton!=controls.end()) {
+            returnButton->second.label=english?L"Return to recording":L"Вернуться к записи";
+            updateText(ReturnToRecording);
+        }
+        EnableWindow(controls[SaveFolder].window, idle);
         for (auto& [id, control] : controls) {
             if(id>=OpenSettings || (id>=ThemeSystem && id<=ThemeDark))continue;
             if (id == Start || (id >= ThemeSystem && id <= ThemeDark)) continue;
             bool enable = idle || id==Microphone || id==Webcam || id==CameraMirror || id==SystemVolume || id==MicVolume || id==NoiseStrength || id==Denoise || id==Corner || id==Background || id==BackgroundPreset || id==BlurStrength;
+            if(id==OutputMode && !idle) enable = recorder.recording() && sessionSound;
             enable &= !finishing;
+            if(!enable && !idle && !finishing && control.kind==Kind::Choice && id!=OutputMode) {
+                auto label=tr(control.label)+(english ? L" (before recording)" : L" (до начала записи)");
+                SetWindowTextW(control.window,label.c_str());
+            } else if(id!=OutputMode) updateText(id);
             if(id==Microphone)enable &= microphones.size()>1;
             if(id==Webcam)enable &= !cameras.empty();
             if(id==CameraMirror)enable &= controls[Webcam].checked && !cameras.empty();
@@ -587,22 +691,25 @@ public:
             EnableWindow(control.window, enable);
         }
         EnableWindow(controls[Start].window, !finishing);
-        controls[Start].label = recorder.busy() ? L"Остановить запись" : L"Начать запись";
+        controls[Start].label = (recorder.busy() || pendingRecording) ? L"Остановить запись" : L"Начать запись";
         updateText(Start); InvalidateRect(window, nullptr, FALSE);
         if(!std::filesystem::exists(executableDir()+L"\\models\\rvm_mobilenetv3_fp32.onnx")) {
             controls[BackgroundFile].label=modelDownload?L"Загрузка эффектов…":L"Загрузить эффекты фона (15 МБ)";updateText(BackgroundFile);
         } else if(backgroundPath.empty()) {controls[BackgroundFile].label=L"Выбрать своё изображение…";updateText(BackgroundFile);}
         showPage();
     }
-    bool settingControl(int id)const{return (id>=ThemeSystem&&id<=ThemeDark)||id==Language||id==LanguageEnglish||id==SaveFolder||id==CloseSettings||id==UpdateApp||id==ConnectLink;}
+    bool settingControl(int id)const{return (id>=ThemeSystem&&id<=ThemeDark)||id==Language||id==LanguageEnglish||id==SaveFolder||id==CloseSettings||id==UpdateApp||id==ConnectLink||id==PanelPosition;}
     void showPage(){
-        for(auto& [id,c]:controls)ShowWindow(c.window,(!settingsOpen&&!settingControl(id))?SW_SHOW:SW_HIDE);
+        for(auto& [id,c]:controls)ShowWindow(c.window,(!settingsOpen&&!settingControl(id)&&(id!=ReturnToRecording||(recorder.recording()&&!finishing&&!panel.open())))?SW_SHOW:SW_HIDE);
         InvalidateRect(window,nullptr,FALSE);
     }
-    void changeLanguage(bool value){english=value;for(auto& [id,c]:controls)updateText(id);savePreferences();InvalidateRect(window,nullptr,FALSE);}
+    void changeLanguage(bool value){english=value;setItems(PanelPosition,english?std::vector<std::wstring>{L"Left",L"Right",L"Top"}:std::vector<std::wstring>{L"Слева",L"Справа",L"Сверху"});for(auto& [id,c]:controls)updateText(id);savePreferences();InvalidateRect(window,nullptr,FALSE);}
     void savePreferences(){
         if(testing)return;
         HKEY key{};if(RegCreateKeyExW(HKEY_CURRENT_USER,preferencesKey.c_str(),0,nullptr,0,KEY_SET_VALUE,nullptr,&key,nullptr)==ERROR_SUCCESS){
+            DWORD edge=static_cast<DWORD>(panelEdge), mute=soundMuted;
+            RegSetValueExW(key,L"RecordingPanelEdge",0,REG_DWORD,reinterpret_cast<BYTE*>(&edge),sizeof(edge));
+            RegSetValueExW(key,L"RecordingSoundMuted",0,REG_DWORD,reinterpret_cast<BYTE*>(&mute),sizeof(mute));
             DWORD value=english;RegSetValueExW(key,L"English",0,REG_DWORD,reinterpret_cast<BYTE*>(&value),sizeof(value));
             RegSetValueExW(key,L"SaveFolder",0,REG_SZ,reinterpret_cast<BYTE const*>(saveFolder.c_str()),DWORD((saveFolder.size()+1)*sizeof(wchar_t)));RegCloseKey(key);
         }
@@ -622,9 +729,12 @@ public:
         add(ThemeSystem,Kind::Segment,L"Системная",422,100,90,34);
         add(ThemeLight,Kind::Segment,L"Светлая",512,100,90,34);
         add(ThemeDark,Kind::Segment,L"Тёмная",602,100,90,34);
-        add(Language,Kind::Choice,L"Язык интерфейса",422,184,270,36);
+        add(PanelPosition,Kind::Choice,L"Расположение панели записи",422,142,270,36);
+        setItems(PanelPosition,english?std::vector<std::wstring>{L"Left",L"Right",L"Top"}:std::vector<std::wstring>{L"Слева",L"Справа",L"Сверху"});
+        controls[PanelPosition].selected=static_cast<int>(panelEdge);
+        add(Language,Kind::Choice,L"Язык интерфейса",422,226,270,36);
         setItems(Language,{L"Русский",L"English"});
-        add(SaveFolder,Kind::Button,L"Выбрать",602,274,90,36);
+        add(SaveFolder,Kind::Button,L"Выбрать",602,316,90,36);
         add(UpdateApp,Kind::Button,L"Обновить",580,466,112,36);
         add(ConnectLink,Kind::Segment,L"by connect.",316,528,88,24);
         add(SourceKind,Kind::Choice,L"Источник",24,128,178,34);setItems(SourceKind,{L"Запись экрана",L"Отдельное окно"});
@@ -648,6 +758,7 @@ public:
         add(BlurStrength,Kind::Slider,L"Размытие",662,336,314,54);controls[BlurStrength].selected=40;updateText(BlurStrength);
         add(BackgroundFile,Kind::Button,L"Выбрать своё изображение…",662,402,314,34);
         add(Start,Kind::Button,L"Начать запись",726,580,250,36);
+        add(ReturnToRecording,Kind::Button,L"Вернуться к записи",466,580,248,36);
         // Keep the dense three-column layout; inputs share a 36px visual height.
         for(auto const& [id,c]:controls)if(c.kind==Kind::Choice || (c.kind==Kind::Button&&id!=Start&&id!=Save)){
             RECT r{};GetWindowRect(c.window,&r);MapWindowPoints(nullptr,window,reinterpret_cast<POINT*>(&r),2);
@@ -737,9 +848,16 @@ public:
             heading(t(L"Внешний вид",L"Appearance"),60);c.label(t(L"Тема",L"Theme"),D2D1::RectF(28,100,412,134),13);
             c.box(D2D1::RectF(419,97,695,137),field,8,line);
             for(int id=ThemeSystem;id<=ThemeDark;++id){auto b=rect(id);bool chosen=theme==id-ThemeSystem;if(chosen)c.box(D2D1::RectF(b.left+2,b.top+1,b.right-2,b.bottom-1),surface,6,line);else if(settingsHover==id)c.box(b,c.selected(),6);c.label(tr(controls.at(id).label),b,12,false,0,DWRITE_TEXT_ALIGNMENT_CENTER);}
-            heading(t(L"Язык интерфейса",L"Interface language"),146);auto lang=rect(Language);c.box(lang,field,7,line);c.label(english?L"English":L"Русский",D2D1::RectF(lang.left+12,lang.top,lang.right-30,lang.bottom),13);c.chevron(lang.right-22,lang.top+15);
-            heading(t(L"Сохранение записи",L"Recording storage"),234);c.label(t(L"Папка записи",L"Recording folder"),D2D1::RectF(28,274,412,310),13);c.box(D2D1::RectF(422,274,592,310),field,7,line);c.label(saveFolder,D2D1::RectF(432,274,582,310),12,false,c.muted());c.button(t(L"Выбрать",L"Choose"),rect(SaveFolder),false,settingsHover==SaveFolder);
-            c.label(t(L"MP4 сохраняются автоматически с датой и временем.",L"MP4 files are saved automatically with date and time."),D2D1::RectF(28,320,692,356),12,false,c.muted());
+            auto edge=rect(PanelPosition);
+            c.label(t(L"Расположение панели записи",L"Recording panel position"),D2D1::RectF(28,142,412,178),13);
+            c.box(edge,field,7,line);
+            auto edgeLabel=controls.at(PanelPosition).items.at(static_cast<int>(panelEdge));
+            c.label(edgeLabel,D2D1::RectF(edge.left+12,edge.top,edge.right-30,edge.bottom),13);
+            c.chevron(edge.right-22,edge.top+15);
+            heading(t(L"Язык интерфейса",L"Interface language"),188);auto lang=rect(Language);c.box(lang,field,7,line);c.label(english?L"English":L"Русский",D2D1::RectF(lang.left+12,lang.top,lang.right-30,lang.bottom),13);c.chevron(lang.right-22,lang.top+15);
+            heading(t(L"Сохранение записи",L"Recording storage"),276);c.label(t(L"Папка записи",L"Recording folder"),D2D1::RectF(28,316,412,352),13);c.box(D2D1::RectF(422,316,592,352),field,7,line);c.label(saveFolder,D2D1::RectF(432,316,582,352),12,false,c.muted());if (!recorder.busy()) c.button(t(L"Выбрать",L"Choose"),rect(SaveFolder),false,settingsHover==SaveFolder);
+            else c.label(t(L"После записи",L"After recording"),rect(SaveFolder),11,false,c.muted(),DWRITE_TEXT_ALIGNMENT_CENTER);
+            c.label(t(L"MP4 сохраняются автоматически с датой и временем.",L"MP4 files are saved automatically with date and time."),D2D1::RectF(28,357,692,369),12,false,c.muted());
             heading(t(L"О Screencast",L"About Screencast"),370);c.label(t(L"Версия Screencast",L"Screencast version"),D2D1::RectF(28,405,542,432),13);c.label(SCREENCAST_VERSION_W,D2D1::RectF(542,405,692,432),13,false,0,DWRITE_TEXT_ALIGNMENT_TRAILING);c.line(28,434,692,434,line,1);c.label(t(L"Разработчик",L"Developer"),D2D1::RectF(28,436,512,463),13);c.label(L"Sander Stripa",D2D1::RectF(512,436,692,463),13,false,c.muted(),DWRITE_TEXT_ALIGNMENT_TRAILING);c.button(t(L"Обновить",L"Update"),rect(UpdateApp),false,settingsHover==UpdateApp);
             c.label(L"by connect.",rect(ConnectLink),11,false,settingsHover==ConnectLink?(dark?0xb6b7bd:0x55585d):c.muted(),DWRITE_TEXT_ALIGNMENT_CENTER);
             c.rt->SetTransform(D2D1::Matrix3x2F::Identity());
@@ -824,6 +942,10 @@ public:
         auto label = control.label;
 
         if (control.kind == Kind::Choice) label = control.items.empty() ? L"Нет доступных устройств" : control.items[control.selected];
+        if ((item.itemState & ODS_DISABLED) && recorder.busy() && !finishing &&
+            (item.CtlID==SourceKind || item.CtlID==Source || item.CtlID==OutputDevice ||
+             item.CtlID==MicDevice || item.CtlID==CameraDevice))
+            label=tr(control.label)+(english ? L" (before recording)" : L" (до начала записи)");
         label=tr(label);
         if(item.CtlID==SaveFolder)label=english?L"Choose":L"Выбрать";
         if(item.CtlID==UpdateApp)label=english?L"Update":L"Обновить";
@@ -883,6 +1005,13 @@ public:
         return ok?buffer:L"";
     }
     void start() {
+        if (pendingRecording) {
+            pendingRecording.reset();
+            endCompactSession();
+            status = L"Запись остановлена";
+            enabled();
+            return;
+        }
         if (recorder.busy()) { finishing = true; status = L"Завершаю MP4…"; recorder.stop(); enabled(); return; }
         auto const& targets = controls[SourceKind].selected == 0 ? screens : windowList;
         if (targets.empty()) throw winrt::hresult_error(E_INVALIDARG, L"Нет доступного источника видео");
@@ -917,15 +1046,38 @@ public:
         settings.path = path;
         overlay.configure(settings.target,live);
         status = L"Подключаю источники…";
-        recorder.start(settings, window); enabled();
+        sessionSound = settings.audio != AudioMode::Off;
+        live->systemMuted = soundMuted;
+        recordingMonitor = settings.target.monitor ? settings.target.monitor :
+            MonitorFromWindow(settings.target.window, MONITOR_DEFAULTTONEAREST);
+        if (!compact(true)) return;
+        pendingRecording.emplace(std::move(settings));
+        enabled();
+    }
+    void endCompactSession() {
+        restoreMain(false);
+        SetWindowDisplayAffinity(window,WDA_NONE);
+        if (stopShortcut) { UnregisterHotKey(window,8); stopShortcut=false; }
     }
     void command(int id) {
+        if(id==ReturnToRecording){if(recorder.recording()&&!finishing)compact(false);return;}
+        if(id==OutputMode && recorder.busy()){muteRecordingSound();return;}
+        if(id==PanelPosition){
+            auto& control=controls.at(id);
+            auto anchor=settingRect(id);
+            MapWindowPoints(window,nullptr,reinterpret_cast<POINT*>(&anchor),2);
+            Dropdown list(control.items,font,dpi,control.selected,palette.background,palette.text,palette.line,palette.hover);
+            if (auto choice=list.show(window,anchor)) setPanelEdge(static_cast<PanelEdge>(choice-1));
+            settingsLayer.Reset();
+            InvalidateRect(window,nullptr,FALSE);
+            return;
+        }
         if(id==OpenSettings||id==CloseSettings){animateSettings(id==OpenSettings);return;}
         if(id==UpdateApp){openExternal(L"https://github.com/sanderstripa/screencast/releases");return;}
         if(id==ConnectLink){openExternal(L"https://connect.sanderstripa.com/");return;}
         if(id==Minimize){ShowWindow(window,SW_MINIMIZE);return;}
         if(id==Close){SendMessageW(window,WM_CLOSE,0,0);return;}
-        if(id==SaveFolder){selectFolder();return;}
+        if(id==SaveFolder){if(!recorder.busy()&&!pendingRecording)selectFolder();return;}
         if(id==Language){
             RECT anchor{};GetWindowRect(controls[Language].window,&anchor);
             std::vector<std::wstring> items{L"Русский",L"English"};
@@ -981,6 +1133,11 @@ public:
         DWORD value{}, size = sizeof(value);
         if (RegGetValueW(HKEY_CURRENT_USER, preferencesKey.c_str(), L"Theme", RRF_RT_REG_DWORD, nullptr, &value, &size) == ERROR_SUCCESS && value <= 2) theme = value;
         size=sizeof(value);value=0;if(RegGetValueW(HKEY_CURRENT_USER,preferencesKey.c_str(),L"English",RRF_RT_REG_DWORD,nullptr,&value,&size)==ERROR_SUCCESS)english=value==1;
+        size=sizeof(value);
+        if(RegGetValueW(HKEY_CURRENT_USER,preferencesKey.c_str(),L"RecordingPanelEdge",RRF_RT_REG_DWORD,nullptr,&value,&size)==ERROR_SUCCESS && value<=2)
+            panelEdge=static_cast<PanelEdge>(value);
+        size=sizeof(value);
+        if(RegGetValueW(HKEY_CURRENT_USER,preferencesKey.c_str(),L"RecordingSoundMuted",RRF_RT_REG_DWORD,nullptr,&value,&size)==ERROR_SUCCESS) soundMuted=value!=0;
         wchar_t folder[32768]{};size=sizeof(folder);if(RegGetValueW(HKEY_CURRENT_USER,preferencesKey.c_str(),L"SaveFolder",RRF_RT_REG_SZ,nullptr,folder,&size)==ERROR_SUCCESS)saveFolder=folder;
         if(saveFolder.empty()){PWSTR name{};if(SUCCEEDED(SHGetKnownFolderPath(FOLDERID_Videos,0,nullptr,&name))){saveFolder=name;CoTaskMemFree(name);}}
     }
@@ -1138,7 +1295,12 @@ public:
 App* app{};
 LRESULT CALLBACK procedure(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam) {
     try {
-        if(message==SingleInstance::activationMessage()){SingleInstance::activate(hwnd);return 1;}
+        if(message==SingleInstance::activationMessage()){
+            if(app->panel.open() && app->recorder.recording()) app->restoreMain(true);
+            else if(!app->pendingRecording) SingleInstance::activate(hwnd);
+            app->showPage();
+            return 1;
+        }
         if(message==WM_APP+105&&app->testing){++app->noticePumps;return 0;}
         switch (message) {
         case WM_CREATE: app->window = hwnd;SetWindowLongPtrW(hwnd,GWLP_USERDATA,reinterpret_cast<LONG_PTR>(app));app->create(); return 0;
@@ -1200,7 +1362,10 @@ LRESULT CALLBACK procedure(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam
         }
         case WM_MOUSELEAVE:app->settingsHover=-1;InvalidateRect(hwnd,nullptr,FALSE);return 0;
         case WM_SETCURSOR:if(app->settingsOpen&&LOWORD(lParam)==HTCLIENT){SetCursor(LoadCursorW(nullptr,app->settingsHover==ConnectLink?IDC_HAND:IDC_ARROW));return TRUE;}break;
-        case WM_KEYDOWN:if(app->settingsOpen){if(wParam==VK_ESCAPE)app->animateSettings(false);else if(wParam==VK_TAB){int ids[]={CloseSettings,ThemeSystem,ThemeLight,ThemeDark,Language,SaveFolder,UpdateApp,ConnectLink};int at=0;for(int i=0;i<8;++i)if(ids[i]==app->settingsKeyboard)at=i;app->settingsKeyboard=ids[(at+((GetKeyState(VK_SHIFT)&0x8000)?7:1))%8];}else if(wParam==VK_RETURN||wParam==VK_SPACE)app->command(app->settingsKeyboard);return 0;}break;
+        case WM_HOTKEY: if(wParam==8){app->panelCommand(PanelAction::Stop);return 0;}break;
+        case WM_RECORD_PANEL: app->panelCommand(static_cast<PanelAction>(wParam));app->showPage();return 0;
+        case WM_RECORD_EDGE: app->setPanelEdge(static_cast<PanelEdge>(wParam));return 0;
+        case WM_KEYDOWN:if(app->settingsOpen){if(wParam==VK_ESCAPE)app->animateSettings(false);else if(wParam==VK_TAB){int ids[]={CloseSettings,ThemeSystem,ThemeLight,ThemeDark,PanelPosition,Language,SaveFolder,UpdateApp,ConnectLink};int at=0;for(int i=0;i<9;++i)if(ids[i]==app->settingsKeyboard)at=i;app->settingsKeyboard=ids[(at+((GetKeyState(VK_SHIFT)&0x8000)?8:1))%9];}else if(wParam==VK_RETURN||wParam==VK_SPACE)app->command(app->settingsKeyboard);return 0;}break;
         case WM_TIMER:
             if(app->settingsCanvas.animationMessage(hwnd,message,wParam))return 0;
             if(wParam==6){app->sheetTick();return 0;}
@@ -1220,6 +1385,7 @@ LRESULT CALLBACK procedure(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam
         case WM_RECORD_STATUS: {
             std::unique_ptr<RecordingResult> result(reinterpret_cast<RecordingResult*>(lParam));
             app->recorder.join(); app->finishing = false;
+            app->endCompactSession();
             app->status = result->success ? L"Запись сохранена · " + std::filesystem::path(result->path).filename().wstring() : L"Запись остановлена";
             app->lastFile = result->path;
             if(!result->success&&!result->path.empty())app->status=app->tr(L"Доступная часть записи: ")+result->path;
@@ -1237,7 +1403,7 @@ LRESULT CALLBACK procedure(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam
                 app->recorder.stop(); app->enabled(); return 0;
             }
             DestroyWindow(hwnd); return 0;
-        case WM_DESTROY: KillTimer(hwnd, 1);KillTimer(hwnd,4);KillTimer(hwnd,5);KillTimer(hwnd,6);KillTimer(hwnd,7); PostQuitMessage(0); return 0;
+        case WM_DESTROY: app->panel.close();if(app->stopShortcut)UnregisterHotKey(hwnd,8);KillTimer(hwnd, 1);KillTimer(hwnd,4);KillTimer(hwnd,5);KillTimer(hwnd,6);KillTimer(hwnd,7); PostQuitMessage(0); return 0;
         }
     } catch (...) {
         app->notice(errorText());
