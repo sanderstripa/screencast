@@ -1,0 +1,45 @@
+name: Publish Screencast 1.6.2
+on:
+  push:
+    branches:
+      - codex/publish-screencast-1.6.2
+    paths:
+      - .github/workflows/publish-screencast-1.6.2.yml
+permissions:
+  actions: read
+  contents: write
+concurrency: screencast-release-1.6.2
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      SOURCE_COMMIT: 23140ef12c99644882b6845824313970874feda8
+      RUN_ID: '45601809632'
+      ARTIFACT_ID: '15016621074'
+      ARCHIVE_SHA256: 2fe65b33e119a46464b1fb7bb1e285f85cd05a01550822ecc6c29ccd53bdcdee
+      INSTALLER: Screencast-1.6.2-Release-x64.exe
+    steps:
+      - name: Verify the Windows build and installer
+        shell: bash
+        run: |
+          gh api "repos/$GH_REPO/actions/runs/$RUN_ID" | jq -e --arg sha "$SOURCE_COMMIT" '.head_sha == $sha and .conclusion == "success"'
+          curl --fail --silent --show-error --location --retry 2 \
+            --header "Authorization: Bearer $GH_TOKEN" \
+            "https://api.github.com/repos/$GH_REPO/actions/artifacts/$ARTIFACT_ID/zip" --output installer.zip
+          printf '%s  installer.zip\n' "$ARCHIVE_SHA256" | sha256sum --check
+          unzip -j installer.zip "$INSTALLER"
+          test -s "$INSTALLER"
+          sha256sum "$INSTALLER" > SHA256SUMS.txt
+      - name: Publish the verified installer
+        shell: bash
+        run: |
+          gh release create v1.6.2 "$INSTALLER" SHA256SUMS.txt \
+            --target "$SOURCE_COMMIT" --title 'Screencast 1.6.2' --prerelease --notes-file - <<'NOTES'
+          Компактная панель управления записью с расположением слева, справа и сверху. Добавлены пауза и возобновление в одном MP4, управление звуком и возврат в основное окно во время записи.
+
+          Windows CI проверил сборку, запись и сохранение MP4, исключение тестового окна из захвата, кружок камеры и установщик. Ручная проверка плавности, перетаскивания, разных масштабов Windows и физических устройств ещё не завершена.
+          NOTES
+          gh release view v1.6.2 --json url,assets,isDraft,isPrerelease
