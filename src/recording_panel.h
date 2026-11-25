@@ -62,6 +62,8 @@ public:
         elapsed_ = -1;
         font_ = CreateFontW(-px(11), 0, 0, 0, FW_MEDIUM, FALSE, FALSE, FALSE,
             DEFAULT_CHARSET, 0, 0, CLEARTYPE_QUALITY, 0, L"Montserrat");
+        INITCOMMONCONTROLSEX common{sizeof(common), ICC_WIN95_CLASSES};
+        InitCommonControlsEx(&common);
         tooltip_ = CreateWindowExW(WS_EX_TOOLWINDOW | WS_EX_TOPMOST, TOOLTIPS_CLASSW, nullptr,
             WS_POPUP | TTS_ALWAYSTIP | TTS_NOPREFIX, 0, 0, 0, 0, window_, nullptr, cls.hInstance, nullptr);
         if (tooltip_ && !excludeFromCapture(tooltip_)) { DestroyWindow(tooltip_); tooltip_ = nullptr; }

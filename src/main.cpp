@@ -220,7 +220,7 @@ public:
     bool compact(bool firstStart) {
         if (!excludeFromCapture(window) ||
             !panel.open(window, recordingMonitor, panelEdge, palette, english, recorder, *live, sessionSound, firstStart)) {
-            if (firstStart) SetWindowDisplayAffinity(window, WDA_NONE);
+            if (firstStart) resetCaptureExclusion(window);
             notice(english ? L"Windows could not exclude the recording controls from capture."
                            : L"Windows не смогла исключить интерфейс Screencast из захвата.");
             return false;
@@ -1062,7 +1062,7 @@ public:
     }
     void endCompactSession() {
         restoreMain(false);
-        SetWindowDisplayAffinity(window,WDA_NONE);
+        resetCaptureExclusion(window);
         if (stopShortcut) { UnregisterHotKey(window,8); stopShortcut=false; }
     }
     void command(int id) {
@@ -1303,7 +1303,7 @@ LRESULT CALLBACK procedure(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam
     try {
         if(message==SingleInstance::activationMessage()){
             if(app->panel.open() && app->recorder.recording()) app->restoreMain(true);
-            else if(!app->pendingRecording) SingleInstance::activate(hwnd);
+            else if(!app->panel.open()) SingleInstance::activate(hwnd);
             app->showPage();
             return 1;
         }
@@ -1354,6 +1354,10 @@ LRESULT CALLBACK procedure(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam
         case WM_CAPTURECHANGED: app->dragging=false;return 0;
         case WM_DRAWITEM: {auto item=*reinterpret_cast<DRAWITEMSTRUCT*>(lParam);bufferedPaint(item.hDC,item.rcItem,[&](HDC back){item.hDC=back;app->draw(item);});return TRUE;}
         case WM_PAINT: {if(app->idleTestPhase==1)++app->idlePaints; PAINTSTRUCT ps{}; auto dc = BeginPaint(hwnd, &ps);RECT client{};GetClientRect(hwnd,&client);bufferedPaint(dc,client,[](HDC back){app->paint(back);}); EndPaint(hwnd, &ps); return 0; }
+        case WM_PRINTCLIENT:
+            if(app->settingsOpen) app->paint(reinterpret_cast<HDC>(wParam));
+            else app->renderWorking(reinterpret_cast<HDC>(wParam));
+            return 0;
         case WM_ERASEBKGND: return 1;
         case WM_SETTINGCHANGE: if (!app->theme) app->applyTheme(); return 0;
         case WM_DPICHANGED: {
