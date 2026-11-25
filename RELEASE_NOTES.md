@@ -1,3 +1,3 @@
-# Screencast 1.6.0
+# Screencast 1.6.1
 
-Updated only the installer icon to the approved lavender planet on a graphite-black sky. Application artwork and desktop, Start menu and taskbar shortcut icons are unchanged. Recording functionality and interface behavior are unchanged.
+- Recording preferences are saved as you change them and restored on the next launch, including capture mode, audio and camera devices, volume, noise suppression, and camera overlay settings.

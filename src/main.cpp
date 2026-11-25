@@ -193,7 +193,7 @@ public:
         if(modelDownload && WaitForSingleObject(modelDownload,0)==WAIT_OBJECT_0) {
             DWORD code{};GetExitCodeProcess(modelDownload,&code);CloseHandle(modelDownload);modelDownload=nullptr;
             if(code==0 && std::filesystem::exists(executableDir()+L"\\models\\rvm_mobilenetv3_fp32.onnx")) {
-                controls[Background].selected=pendingBackground;backgroundItems();updateText(Background);updateLive();status=L"Эффекты фона готовы";
+                controls[Background].selected=pendingBackground;backgroundItems();updateText(Background);updateLive();saveCaptureControl(Background);saveCaptureControl(BackgroundPreset);status=L"Эффекты фона готовы";
             } else {status=L"Загрузка не удалась. Нажмите «Загрузить эффекты» ещё раз";}
             enabled();InvalidateRect(window,nullptr,FALSE);
         }
@@ -240,15 +240,158 @@ public:
             self->updateText(id);self->updateLive();return 0;
         }
         if(message==WM_LBUTTONUP) {if(GetCapture()==hwnd)ReleaseCapture();return 0;}
+        if(message==WM_CAPTURECHANGED) self->saveCaptureControl(id);
         if(message==WM_KEYDOWN && (wp==VK_LEFT || wp==VK_RIGHT || wp==VK_HOME || wp==VK_END)) {
             c.selected=wp==VK_HOME?0:wp==VK_END?c.maximum:std::clamp(c.selected+(wp==VK_RIGHT?5:-5),0,c.maximum);
-            self->updateText(id);self->updateLive();return 0;
+            self->updateText(id);self->updateLive();self->saveCaptureControl(id);return 0;
         }
         if(message==WM_NCDESTROY) RemoveWindowSubclass(hwnd,sliderProcedure,1);
         return DefSubclassProc(hwnd,message,wp,lp);
     }
+    static constexpr std::pair<int, wchar_t const*> captureControls[]{
+        {SourceKind,L"SourceKind"}, {OutputMode,L"OutputMode"}, {Microphone,L"Microphone"},
+        {Denoise,L"Denoise"}, {Webcam,L"Webcam"}, {Corner,L"CameraCorner"},
+        {CameraMirror,L"CameraMirror"}, {Background,L"Background"},
+        {BackgroundPreset,L"BackgroundPreset"}, {SystemVolume,L"SystemVolume"},
+        {MicVolume,L"MicVolume"}, {NoiseStrength,L"NoiseStrength"}, {BlurStrength,L"BlurStrength"}
+    };
+
+    void writeCapturePreference(wchar_t const* name, DWORD type, void const* data, DWORD size) {
+        if (testing) return;
+        HKEY key{};
+        if (RegCreateKeyExW(HKEY_CURRENT_USER, preferencesKey.c_str(), 0, nullptr, 0,
+                            KEY_SET_VALUE, nullptr, &key, nullptr) != ERROR_SUCCESS) return;
+        RegSetValueExW(key, name, 0, type, static_cast<BYTE const*>(data), size);
+        RegCloseKey(key);
+    }
+
+    void saveCaptureString(wchar_t const* name, std::wstring const& value) {
+        writeCapturePreference(name, REG_SZ, value.c_str(), DWORD((value.size()+1)*sizeof(wchar_t)));
+    }
+
+    std::wstring readCaptureString(wchar_t const* name) const {
+        DWORD size{};
+        auto read = [&](void* data) {
+            return RegGetValueW(HKEY_CURRENT_USER, preferencesKey.c_str(), name, RRF_RT_REG_SZ,
+                                nullptr, data, &size);
+        };
+        if (read(nullptr) != ERROR_SUCCESS || size < sizeof(wchar_t) ||
+            size > 32768*sizeof(wchar_t) || size % sizeof(wchar_t)) return {};
+        std::wstring value(size/sizeof(wchar_t), L'\0');
+        if (read(value.data()) != ERROR_SUCCESS) return {};
+        auto terminator = value.find(L'\0');
+        if (terminator != std::wstring::npos) value.resize(terminator);
+        return value;
+    }
+
+    void saveCaptureControl(int id) {
+        for (auto [controlId, name] : captureControls) {
+            if (controlId != id) continue;
+            auto const& control = controls.at(id);
+            DWORD value = control.kind == Kind::Toggle ? control.checked : control.selected;
+            writeCapturePreference(name, REG_DWORD, &value, sizeof(value));
+            return;
+        }
+    }
+
+    void loadCaptureControl(int id, wchar_t const* name) {
+        auto& control = controls.at(id);
+        DWORD value{}, size = sizeof(value);
+        if (RegGetValueW(HKEY_CURRENT_USER, preferencesKey.c_str(), name, RRF_RT_REG_DWORD,
+                         nullptr, &value, &size) != ERROR_SUCCESS) return;
+        if (control.kind == Kind::Toggle && value <= 1) control.checked = value != 0;
+        if (control.kind == Kind::Choice && value < control.items.size()) control.selected = int(value);
+        if (control.kind == Kind::Slider && value <= DWORD(control.maximum)) control.selected = int(value);
+        updateText(id);
+    }
+
+    static std::wstring sourceKey(Target const& target) {
+        if (target.monitor) {
+            MONITORINFOEXW info{};
+            info.cbSize = sizeof(info);
+            if (GetMonitorInfoW(target.monitor, &info)) return info.szDevice;
+        }
+        if (target.window && target.creationTime)
+            return std::to_wstring(reinterpret_cast<uintptr_t>(target.window)) + L":" + processKey(target);
+        return {};
+    }
+
+    static std::wstring processKey(Target const& target) {
+        return std::to_wstring(target.pid) + L":" + std::to_wstring(target.creationTime);
+    }
+
+    void saveCaptureChoice(int id) {
+        auto save = [&](wchar_t const* name, auto const& items, auto identity) {
+            auto index = size_t(controls.at(id).selected);
+            if (index < items.size()) saveCaptureString(name, identity(items[index]));
+        };
+        auto deviceKey = [](Device const& device) { return device.id; };
+        switch (id) {
+        case Source:
+            if (controls[SourceKind].selected == 0) save(L"MonitorDevice", screens, sourceKey);
+            else save(L"CaptureWindow", windowList, sourceKey);
+            break;
+        case OutputDevice:
+            if (controls[OutputMode].selected == 2) save(L"AudioProcess", processList, processKey);
+            else save(L"OutputDevice", outputs, deviceKey);
+            break;
+        case MicDevice: save(L"MicDevice", microphones, deviceKey); break;
+        case CameraDevice: save(L"CameraDevice", cameras, deviceKey); break;
+        default: saveCaptureControl(id); break;
+        }
+    }
+
+    void restoreCapturePreferences() {
+        if (testing) return;
+        for (auto [id, name] : captureControls)
+            if (id != BackgroundPreset) loadCaptureControl(id, name);
+        backgroundItems();
+        loadCaptureControl(BackgroundPreset, L"BackgroundPreset");
+
+        backgroundPath = readCaptureString(L"BackgroundPath");
+        if (!backgroundPath.empty()) {
+            try {
+                loadImage(backgroundPath);
+                controls[BackgroundFile].label = std::filesystem::path(backgroundPath).filename().wstring();
+                updateText(BackgroundFile);
+            } catch (...) {
+                backgroundPath.clear();
+            }
+        }
+        std::error_code modelError;
+        if ((controls[Background].selected == 5 && backgroundPath.empty()) ||
+            (controls[Background].selected != 0 &&
+             !std::filesystem::exists(executableDir()+L"\\models\\rvm_mobilenetv3_fp32.onnx", modelError))) {
+            controls[Background].selected = 0;
+            updateText(Background);
+            backgroundItems();
+        }
+
+        auto find = [&](wchar_t const* name, auto const& items, auto identity) {
+            auto key = readCaptureString(name);
+            if (key.empty()) return 0;
+            for (size_t i = 0; i < items.size(); ++i)
+                if (identity(items[i]) == key) return int(i);
+            return 0;
+        };
+        auto deviceKey = [](Device const& device) { return device.id; };
+        sourceItems();
+        controls[Source].selected = controls[SourceKind].selected == 0
+            ? find(L"MonitorDevice", screens, sourceKey) : find(L"CaptureWindow", windowList, sourceKey);
+        controls[MicDevice].selected = find(L"MicDevice", microphones, deviceKey);
+        controls[CameraDevice].selected = find(L"CameraDevice", cameras, deviceKey);
+        systemOutputIndex = find(L"OutputDevice", outputs, deviceKey);
+        processIndex = find(L"AudioProcess", processList, processKey);
+        outputItems(false);
+        for (int id : {Source, MicDevice, CameraDevice}) updateText(id);
+        updateLive();
+        auto corner = controls[Corner].selected;
+        live->cameraX=float(corner%2); live->cameraY=float(corner/2);
+        enabled();
+    }
+
     void updateLive() {
-        live->micEnabled=controls[Microphone].checked;live->cameraEnabled=controls[Webcam].checked;live->cameraMirror=controls[CameraMirror].checked;
+        live->micEnabled=controls[Microphone].checked;live->cameraEnabled=controls[Webcam].checked && !cameras.empty();live->cameraMirror=controls[CameraMirror].checked;
         live->systemGain=controls[SystemVolume].selected/100.f; live->micGain=controls[MicVolume].selected/100.f;
         live->noiseStrength=controls[NoiseStrength].selected/100.f;live->denoise=controls[Denoise].checked;
         live->background=static_cast<BackgroundMode>(controls[Background].selected);
@@ -525,7 +668,7 @@ public:
         SetWindowPos(window,nullptr,0,0,client.right-client.left,client.bottom-client.top,SWP_NOMOVE|SWP_NOZORDER);
         layoutChrome();
         scrollRange();
-        refresh(); applyTheme(); SetTimer(window, 1, 33, nullptr);
+        refresh(); restoreCapturePreferences(); applyTheme(); SetTimer(window, 1, 33, nullptr);
     }
     void text(HDC dc, std::wstring const& value, int x, int y, int w, int h, HFONT face, COLORREF color, UINT flags = DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS) {
         RECT r{px(x),px(y)-scroll,px(x+w),px(y+h)-scroll};
@@ -755,12 +898,8 @@ public:
         settings.micAvailable=microphones.size()>1;
         settings.micId = microphones.at(controls[MicDevice].selected).id;
         if (settings.audio == AudioMode::System) settings.outputId = outputs.at(controls[OutputDevice].selected).id;
-        settings.camera = controls[Webcam].checked;
+        settings.camera = controls[Webcam].checked && !cameras.empty();
         if(!cameras.empty())settings.cameraId=cameras.at(controls[CameraDevice].selected).id;
-        if (settings.camera) {
-            if (cameras.empty()) throw winrt::hresult_error(E_INVALIDARG, L"Камера не подключена");
-            settings.cameraId = cameras.at(controls[CameraDevice].selected).id;
-        }
         settings.corner = controls[Corner].selected;
         updateLive(); settings.live=live;
         live->cameraX=float(settings.corner%2); live->cameraY=float(settings.corner/2);
@@ -806,7 +945,7 @@ public:
             Dropdown list(choices,font,dpi,control.selected,palette.background,palette.text,palette.line,palette.hover);
             auto picked=list.show(window,r);
             if(!IsWindow(window))return;
-            if (picked) {
+            if (picked > 0 && size_t(picked) <= control.items.size() && choices.size() == control.items.size()) {
                 if(id==Background && picked==6 && recorder.busy() && backgroundPath.empty()) {
                     notice(L"Сначала выберите своё изображение до начала записи.");return;
                 }
@@ -814,18 +953,19 @@ public:
                 control.selected = picked - 1; updateText(id);
                 if (id == SourceKind) sourceItems();
                 if (id == OutputMode) outputItems();
-                if(id==Background) backgroundItems();
+                if(id==Background) { backgroundItems(); saveCaptureControl(BackgroundPreset); }
                 if(id==Corner) { live->cameraX=float(control.selected%2); live->cameraY=float(control.selected/2); }
                 updateLive();
+                saveCaptureChoice(id);
             }
             enabled();
-        } else if (control.kind == Kind::Toggle) { setChecked(id, !control.checked); updateLive(); enabled(); }
+        } else if (control.kind == Kind::Toggle) { setChecked(id, !control.checked); updateLive(); saveCaptureControl(id); enabled(); }
         else if (id == Refresh) refresh();
         else if (id == BackgroundFile) {
             if(!std::filesystem::exists(executableDir()+L"\\models\\rvm_mobilenetv3_fp32.onnx")) {installModel(1);return;}
             auto value = chooseImage(L"Изображения\0*.png;*.jpg;*.jpeg;*.bmp\0\0");
             if (!value.empty()) {
-                loadImage(value); backgroundPath = value;
+                loadImage(value); backgroundPath = value; saveCaptureString(L"BackgroundPath", value);
                 controls[BackgroundFile].label = std::filesystem::path(value).filename().wstring(); updateText(BackgroundFile);
             }
         } else if (id == Start) start();
@@ -910,6 +1050,20 @@ public:
             command(LanguageEnglish);require(tr(L"Начать запись")==L"Start recording",L"Language does not translate");
             saveFolder=(directory/L"recordings").wstring();savePreferences();App loaded;loaded.preferencesKey=preferencesKey;loaded.readTheme();
             require(loaded.english&&loaded.theme==0&&loaded.saveFolder==saveFolder,L"Settings do not persist");
+            int volume = controls[SystemVolume].selected;
+            bool mirror = controls[CameraMirror].checked;
+            controls[SystemVolume].selected = 137;
+            command(CameraMirror);
+            saveCaptureControl(SystemVolume);
+            controls[SystemVolume].selected = 100;
+            setChecked(CameraMirror, mirror);
+            restoreCapturePreferences();
+            require(controls[SystemVolume].selected == 137 && live->cameraMirror == !mirror,
+                    L"Recording preferences did not restore");
+            controls[SystemVolume].selected = volume;
+            setChecked(CameraMirror, mirror);
+            updateText(SystemVolume);
+            updateLive();
             changeLanguage(false);require(tr(L"Настройки")==L"Настройки",L"Language cannot return to RU");
             command(CloseSettings);require(!settingsOpen && controls[SourceKind].selected==source&&live->micEnabled.load()==mic&&live->cameraEnabled.load()==camera,L"UI settings changed capture state");
             require(!(GetWindowLongPtrW(controls[ThemeDark].window,GWL_STYLE)&WS_VISIBLE),L"Theme controls remain on the main screen");
