@@ -1,0 +1,28 @@
+name: Promote Screencast 1.6.2 to stable
+on:
+  push:
+    branches:
+      - codex/publish-screencast-1.6.2
+    paths:
+      - .github/workflows/promote-screencast-1.6.2.yml
+permissions:
+  contents: write
+concurrency: screencast-release-1.6.2
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      GH_REPO: ${{ github.repository }}
+      GH_TOKEN: ${{ github.token }}
+      INSTALLER: Screencast-1.6.2-Release-x64.exe
+      INSTALLER_DIGEST: sha256:8a6242a448177607e233255b731c0ceae3de3f8cf5e701983d5ccbc6cc36a729
+    steps:
+      - name: Verify and promote the existing release
+        shell: bash
+        run: |
+          gh api "repos/$GH_REPO/releases/tags/v1.6.2" | jq -e --arg installer "$INSTALLER" --arg digest "$INSTALLER_DIGEST" '
+            .draft == false and .target_commitish == "23140ef12c99644882b6845824313970874feda8"
+            and any(.assets[]; .name == $installer and .state == "uploaded" and .digest == $digest)'
+          gh release edit v1.6.2 --prerelease=false --latest
+          gh api "repos/$GH_REPO/releases/latest" | jq -e '.tag_name == "v1.6.2" and .draft == false and .prerelease == false'
