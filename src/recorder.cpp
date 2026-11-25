@@ -6,10 +6,12 @@
 #include <avrt.h>
 #include <deque>
 #include <d3d11.h>
+#include <dwmapi.h>
 #include <fstream>
 #include <mftransform.h>
 #include "overlay.h"
 #include "live_capture.h"
+#include "capture_exclusion.h"
 
 namespace {
 class Writer {
@@ -227,7 +229,7 @@ void Recorder::start(Settings settings, HWND notify) {
                 auto now = wallTime - omitted;
                 if (stop_ && stopAt < 0) stopAt = pauseBoundary >= 0 ? pauseBoundary : now;
                 if (stopAt < 0 && pauseRequested_ && pauseBoundary < 0) {
-                    pauseBoundary = now / cutInterval * cutInterval;
+                    pauseBoundary = std::max(cutInterval, now / cutInterval * cutInterval);
                 }
                 if(stopAt < 0) {
                     bool wantMic=settings.live->micEnabled && settings.micAvailable;
@@ -478,15 +480,60 @@ int overlaySelfTest(std::wstring const& directory) {
     check(BitBlt(memory,0,0,1,1,desktop,info.rcMonitor.left+x,info.rcMonitor.top+y,SRCCOPY|CAPTUREBLT)?S_OK:E_FAIL);
     auto color=GetPixel(memory,0,0);SelectObject(memory,old);DeleteObject(bitmap);DeleteDC(memory);ReleaseDC(nullptr,desktop);
     if(GetRValue(color)<180 || GetGValue(color)>80) throw winrt::hresult_error(E_FAIL,L"Кружок не виден на снимке рабочего стола");
+    // Put a synthetic foreground window over a distinguishable background.
+    // WGC must expose the background color and preserve the separate camera overlay.
+    WNDCLASSW cls{};
+    cls.hInstance = GetModuleHandleW(nullptr);
+    cls.lpszClassName = L"ScreencastExclusionTest";
+    cls.lpfnWndProc = [](HWND window,UINT message,WPARAM w,LPARAM l)->LRESULT {
+        if (message==WM_NCCREATE) {
+            auto create=reinterpret_cast<CREATESTRUCTW*>(l);
+            SetWindowLongPtrW(window,GWLP_USERDATA,reinterpret_cast<LONG_PTR>(create->lpCreateParams));
+        }
+        if (message==WM_PAINT) {
+            PAINTSTRUCT ps{};
+            auto dc=BeginPaint(window,&ps);
+            auto brush=CreateSolidBrush(static_cast<COLORREF>(GetWindowLongPtrW(window,GWLP_USERDATA)));
+            FillRect(dc,&ps.rcPaint,brush);
+            DeleteObject(brush);
+            EndPaint(window,&ps);
+            return 0;
+        }
+        return DefWindowProcW(window,message,w,l);
+    };
+    check(RegisterClassW(&cls)?S_OK:HRESULT_FROM_WIN32(GetLastError()));
+    struct TestWindow {
+        HWND hwnd{};
+        ~TestWindow(){if(hwnd)DestroyWindow(hwnd);}
+    };
+    int centerX=(info.rcMonitor.right-info.rcMonitor.left)/2;
+    int centerY=(info.rcMonitor.bottom-info.rcMonitor.top)/2;
+    auto createMarker=[&](COLORREF color) {
+        return CreateWindowExW(WS_EX_TOPMOST|WS_EX_TOOLWINDOW|WS_EX_NOACTIVATE,cls.lpszClassName,L"",
+            WS_POPUP,info.rcMonitor.left+centerX-32,info.rcMonitor.top+centerY-32,64,64,
+            nullptr,nullptr,cls.hInstance,reinterpret_cast<void*>(static_cast<UINT_PTR>(color)));
+    };
+    TestWindow background{createMarker(RGB(10,215,30))};
+    TestWindow foreground{createMarker(RGB(200,20,210))};
+    check(background.hwnd && foreground.hwnd && excludeFromCapture(foreground.hwnd)?S_OK:E_FAIL);
+    for (auto marker : {background.hwnd,foreground.hwnd}) {
+        ShowWindow(marker,SW_SHOWNOACTIVATE);
+        UpdateWindow(marker);
+    }
+    check(DwmFlush());
+    auto displayedAt=clock100ns();
     Capture capture(target);Image screen;auto until=clock100ns()+50000000;
-    do {if(capture.next(screen) && screen.time100ns>=live->overlayReady.load())break;std::this_thread::sleep_for(std::chrono::milliseconds(5));}while(clock100ns()<until);
+    do {if(capture.next(screen) && screen.time100ns>=displayedAt)break;std::this_thread::sleep_for(std::chrono::milliseconds(5));}while(clock100ns()<until);
     if(screen.empty()) throw winrt::hresult_error(E_FAIL,L"Нет кадра для проверки кружка");
     auto pixel=screen.bgra.data()+(static_cast<size_t>(y)*screen.width+x)*4;
     if(pixel[2]<180 || pixel[1]>80) throw winrt::hresult_error(E_FAIL,L"Кружок не попал в захват монитора");
+    auto behind=screen.bgra.data()+(static_cast<size_t>(centerY)*screen.width+centerX)*4;
+    if(behind[1]<180 || behind[0]>70 || behind[2]>70)
+        throw winrt::hresult_error(E_FAIL,L"Захват не показывает фон за исключённым окном");
     // Store only a synthetic red crop. Personal desktop contents never enter the artifact.
     Image crop{64,64,std::vector<uint8_t>(64*64*4)};
     for(int row=0;row<64;++row)memcpy(crop.bgra.data()+row*64*4,screen.bgra.data()+(static_cast<size_t>(y-32+row)*screen.width+x-32)*4,64*4);
     Writer writer(directory+L"\\desktop-overlay.mp4",64,64,30,false);for(int frame=0;frame<30;++frame)writer.video(crop,frame);writer.finalize();
-    std::ofstream log{std::filesystem::path(directory)/L"desktop-overlay.txt"};log<<"Layered circle visible in desktop screenshot and Windows Graphics Capture. Encoded synthetic-only crop.\n";
+    std::ofstream log{std::filesystem::path(directory)/L"desktop-overlay.txt"};log<<"Windows Graphics Capture reveals the background behind the excluded window and records the camera circle.\n";
     overlay.hide();return 0;
 }

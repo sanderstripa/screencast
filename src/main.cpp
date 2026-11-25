@@ -73,11 +73,13 @@ public:
             }else if(recordingTestStage==1){
                 if(now-recordingTestTime>15000)throw std::runtime_error("recording did not start");
                 if(!recorder.recording())return;
-                if(!panel.settledHidden() || IsWindowVisible(window) || !hasCaptureExclusion(window))
+                if(IsWindowVisible(window) || !hasCaptureExclusion(window))
                     throw std::runtime_error("compact panel did not hide before capture");
                 panelCommand(PanelAction::Home);
-                if(panel.open() || !IsWindowVisible(window))
-                    throw std::runtime_error("main window did not return during capture");
+                recordingTestStage=8;recordingTestTime=now;
+            }else if(recordingTestStage==8){
+                if(now-recordingTestTime>3000)throw std::runtime_error("main window did not return during capture");
+                if(panel.open() || !IsWindowVisible(window))return;
                 controls[SystemVolume].selected=75;controls[MicVolume].selected=30;
                 setChecked(Denoise,true);controls[NoiseStrength].selected=80;
                 controls[CameraMirror].checked=true;controls[Background].selected=1;controls[BlurStrength].selected=60;updateLive();
@@ -218,7 +220,7 @@ public:
     bool compact(bool firstStart) {
         if (!excludeFromCapture(window) ||
             !panel.open(window, recordingMonitor, panelEdge, palette, english, recorder, *live, sessionSound, firstStart)) {
-            SetWindowDisplayAffinity(window, WDA_NONE);
+            if (firstStart) SetWindowDisplayAffinity(window, WDA_NONE);
             notice(english ? L"Windows could not exclude the recording controls from capture."
                            : L"Windows не смогла исключить интерфейс Screencast из захвата.");
             return false;
@@ -246,7 +248,7 @@ public:
         case PanelAction::Pause: if(!finishing) recorder.togglePause(); break;
         case PanelAction::Sound: muteRecordingSound(); break;
         case PanelAction::Home:
-            if(recorder.recording() && !finishing) { restoreMain(true); enabled(); }
+            if(recorder.recording() && !finishing) panel.travelToMain();
             break;
         case PanelAction::Stop: if(recorder.busy() || pendingRecording) start(); break;
         }
@@ -264,6 +266,10 @@ public:
         CloseHandle(process.hThread);modelDownload=process.hProcess;status=L"Загружаю эффекты фона (15 МБ)…";enabled();
     }
     void tick() {
+        if (panel.reachedMain() && !finishing) {
+            restoreMain(true);
+            enabled();
+        }
         if (pendingRecording && panel.settledHidden()) {
             auto settings = std::move(*pendingRecording);
             pendingRecording.reset();
@@ -1205,8 +1211,8 @@ public:
             KillTimer(window,5);
             for(int id:{ThemeLight,ThemeDark,ThemeSystem}){command(id);require(theme==id-ThemeSystem,L"Theme control is inert");if(id!=ThemeSystem)require(dark==(id==ThemeDark),L"Explicit theme did not apply");}
             command(LanguageEnglish);require(tr(L"Начать запись")==L"Start recording",L"Language does not translate");
-            saveFolder=(directory/L"recordings").wstring();savePreferences();App loaded;loaded.preferencesKey=preferencesKey;loaded.readTheme();
-            require(loaded.english&&loaded.theme==0&&loaded.saveFolder==saveFolder,L"Settings do not persist");
+            saveFolder=(directory/L"recordings").wstring();setPanelEdge(PanelEdge::Top);savePreferences();App loaded;loaded.preferencesKey=preferencesKey;loaded.readTheme();
+            require(loaded.english&&loaded.theme==0&&loaded.saveFolder==saveFolder&&loaded.panelEdge==PanelEdge::Top,L"Settings do not persist");
             int volume = controls[SystemVolume].selected;
             bool mirror = controls[CameraMirror].checked;
             controls[SystemVolume].selected = 137;

@@ -48,13 +48,17 @@ public:
         if (!SetTimer(window_, 1, 15, nullptr)) { close(); return false; }
         dpi_ = GetDpiForWindow(window_);
         visible = dock(false);
-        position_ = start_ = target_ = visible;
+        position_ = start_ = fromMain(visible);
+        target_ = visible;
+        began_ = GetTickCount64();
+        travelling_ = true;
+        returning_ = false;
         hot_ = -1;
         pressed_ = -1;
         dragging_ = false;
         firstStart_ = firstStart;
         hidden_ = false;
-        holdUntil_ = GetTickCount64() + 220;
+        holdUntil_ = began_ + 230;
         elapsed_ = -1;
         font_ = CreateFontW(-px(11), 0, 0, 0, FW_MEDIUM, FALSE, FALSE, FALSE,
             DEFAULT_CHARSET, 0, 0, CLEARTYPE_QUALITY, 0, L"Montserrat");
@@ -69,7 +73,7 @@ public:
             tool.lpszText = tooltipText_.data();
             SendMessageW(tooltip_, TTM_ADDTOOLW, 0, reinterpret_cast<LPARAM>(&tool));
         }
-        place(visible, true);
+        place(position_, true);
         ShowWindow(window_, SW_SHOWNOACTIVATE);
         return true;
     }
@@ -82,6 +86,16 @@ public:
 
     bool settledHidden() const { return window_ && hidden_ && EqualRect(&position_, &target_); }
     bool open() const { return window_ != nullptr; }
+
+    void travelToMain() {
+        if (!window_ || returning_) return;
+        tooltip(false);
+        start_ = position_;
+        target_ = fromMain(dock(false));
+        began_ = GetTickCount64();
+        travelling_ = returning_ = true;
+    }
+    bool reachedMain() const { return window_ && returning_ && !travelling_; }
 
 private:
     HWND window_{}, owner_{}, tooltip_{};
@@ -97,7 +111,7 @@ private:
     int dpi_{96}, hot_{-1}, pressed_{-1};
     int64_t elapsed_{-1};
     ULONGLONG began_{}, holdUntil_{}, hoverSince_{};
-    bool english_{}, hidden_{}, dragging_{}, firstStart_{}, soundAvailable_{}, tipVisible_{};
+    bool english_{}, hidden_{}, dragging_{}, firstStart_{}, soundAvailable_{}, tipVisible_{}, travelling_{}, returning_{};
     std::wstring tooltipText_;
 
     int px(int value) const { return MulDiv(value, dpi_, 96); }
@@ -112,6 +126,16 @@ private:
         return {x, y, x + width, y + height};
     }
 
+    RECT fromMain(RECT size) const {
+        RECT main{};
+        GetWindowRect(owner_, &main);
+        auto width = size.right-size.left;
+        auto height = size.bottom-size.top;
+        auto x = std::clamp((main.left+main.right-width)/2,screen_.left,std::max(screen_.left,screen_.right-width));
+        auto y = std::clamp((main.top+main.bottom-height)/2,screen_.top,std::max(screen_.top,screen_.bottom-height));
+        return {x,y,x+width,y+height};
+    }
+
     RECT revealArea() const {
         RECT r = dock(false);
         if (edge_ == PanelEdge::Top) { r.top = screen_.top; r.bottom = r.top + px(8); }
@@ -122,6 +146,8 @@ private:
 
     void place(RECT r, bool force = false) {
         if (!force && EqualRect(&position_, &r)) return;
+        bool resized = r.right-r.left != position_.right-position_.left ||
+            r.bottom-r.top != position_.bottom-position_.top;
         position_ = r;
         int width = r.right-r.left, height = r.bottom-r.top;
         HRGN shape = CreateRoundRectRgn(0, 0, width, height, px(19), px(19));
@@ -129,7 +155,9 @@ private:
         CombineRgn(shape, shape, clip, RGN_AND);
         DeleteObject(clip);
         if (!SetWindowRgn(window_, shape, FALSE)) DeleteObject(shape);
-        SetWindowPos(window_, HWND_TOPMOST, r.left, r.top, width, height, SWP_NOACTIVATE);
+        UINT flags = SWP_NOACTIVATE | (resized ? SWP_NOCOPYBITS : 0);
+        SetWindowPos(window_, HWND_TOPMOST, r.left, r.top, width, height, flags);
+        if (resized) InvalidateRect(window_, nullptr, FALSE);
     }
 
     void aim(bool hidden) {
@@ -147,10 +175,19 @@ private:
         auto now = GetTickCount64();
         POINT cursor{};
         GetCursorPos(&cursor);
+        if (pressed_ >= 0) {
+            // A non-activating window gets mouse capture only inside its visible
+            // bounds. Poll while pressed so dragging can cross the desktop.
+            if (GetAsyncKeyState(VK_LBUTTON) & 0x8000) moveDrag(cursor);
+            else finishPress(cursor);
+        }
         auto edgeArea = revealArea();
         POINT local{cursor.x-position_.left, cursor.y-position_.top};
         bool over = PtInRect(&position_, cursor) && PtInRect(&screen_, cursor);
-        int nextHot = over && !dragging_ && recorder_->recording() ? hit(local) : -1;
+        RECT tipBounds{};
+        bool overTip = tipVisible_ && GetWindowRect(tooltip_, &tipBounds) && PtInRect(&tipBounds, cursor);
+        int nextHot = overTip ? hot_ : over && !dragging_ && !travelling_ && !returning_ &&
+            recorder_->recording() ? hit(local) : -1;
         if (nextHot != hot_) {
             tooltip(false);
             hot_ = nextHot;
@@ -159,18 +196,23 @@ private:
         } else if (hot_ > 0 && !tipVisible_ && now-hoverSince_ > 600) tooltip(true);
 
         if (!dragging_ && pressed_ < 0) {
-            if (firstStart_) {
+            if (travelling_ && EqualRect(&position_, &target_)) travelling_ = false;
+            if (travelling_ || returning_) {
+                // Keep a single target until the handoff between the two windows.
+            } else if (firstStart_) {
                 if (now >= holdUntil_ && !hidden_) aim(true);
                 if (recorder_->recording()) {
                     firstStart_ = false;
                     holdUntil_ = 0;
                 }
             } else {
-                bool reveal = over || PtInRect(&edgeArea, cursor) || now < holdUntil_;
+                bool reveal = over || overTip || PtInRect(&edgeArea, cursor) || now < holdUntil_;
                 if (hidden_ == reveal) aim(!reveal);
             }
             if (!EqualRect(&position_, &target_)) {
-                double t = std::min(1., (now-began_)/180.);
+                BOOL animations=TRUE;
+                SystemParametersInfoW(SPI_GETCLIENTAREAANIMATION,0,&animations,0);
+                double t = animations ? std::min(1., (now-began_)/180.) : 1.;
                 t = 1.-(1.-t)*(1.-t)*(1.-t);
                 place({interpolate(start_.left,target_.left,t),interpolate(start_.top,target_.top,t),
                     interpolate(start_.right,target_.right,t),interpolate(start_.bottom,target_.bottom,t)});
@@ -243,7 +285,7 @@ private:
             }
             Gdiplus::Pen pen(color(i==2 && !soundAvailable_ ? palette_.muted : palette_.text),float(px(2)));
             auto line = [&](int x,int y,int a,int b) {
-                g.DrawLine(&pen,c.x+px(x),c.y+px(y),c.x+px(a),c.y+px(b));
+                g.DrawLine(&pen,float(c.x+px(x)),float(c.y+px(y)),float(c.x+px(a)),float(c.y+px(b)));
             };
             if (i==1 && recorder_->paused()) { line(-4,-6,6,0);line(6,0,-4,6);line(-4,6,-4,-6); }
             if (i==1 && !recorder_->paused()) { line(-3,-6,-3,6);line(3,-6,3,6); }
@@ -268,6 +310,30 @@ private:
         SetTextColor(dc,palette_.text);
         DrawTextW(dc,duration,-1,&text,DT_SINGLELINE|DT_VCENTER|DT_LEFT|DT_NOPREFIX);
         SelectObject(dc,previous);
+    }
+
+    void moveDrag(POINT cursor) {
+        if (pressed_ != 0) return;
+        auto dx = cursor.x-mouseDown_.x, dy = cursor.y-mouseDown_.y;
+        if (!dragging_ && std::abs(dx)+std::abs(dy)<=px(5)) return;
+        dragging_ = true;
+        auto rect = dragStart_;
+        OffsetRect(&rect,dx,dy);
+        place(rect);
+    }
+
+    void finishPress(POINT cursor) {
+        int pressed = pressed_;
+        bool dragging = dragging_;
+        pressed_ = -1;
+        dragging_ = false;
+        if (GetCapture()==window_) ReleaseCapture();
+        if (dragging) drop(cursor);
+        else if (pressed>0 && PtInRect(&position_,cursor) &&
+            pressed==hit({cursor.x-position_.left,cursor.y-position_.top})) {
+            PostMessageW(owner_,WM_RECORD_PANEL,pressed,0);
+            InvalidateRect(window_,nullptr,FALSE);
+        }
     }
 
     void drop(POINT cursor) {
@@ -301,39 +367,25 @@ private:
             return 0;
         }
         case WM_LBUTTONDOWN:
-            if (!self->recorder_->recording()) return 0;
+            if (!self->recorder_->recording() || self->travelling_ || self->returning_) return 0;
             self->pressed_ = self->hit(point);
             self->tooltip(false);
             self->dragStart_ = self->position_;
             GetCursorPos(&self->mouseDown_);
             SetCapture(hwnd);
             return 0;
-        case WM_MOUSEMOVE:
-            if (self->pressed_ == 0) {
-                POINT cursor{};GetCursorPos(&cursor);
-                auto dx=cursor.x-self->mouseDown_.x, dy=cursor.y-self->mouseDown_.y;
-                if (self->dragging_ || std::abs(dx)+std::abs(dy)>self->px(5)) {
-                    self->dragging_ = true;
-                    auto r = self->dragStart_;
-                    OffsetRect(&r,dx,dy);
-                    self->place(r);
-                }
-            }
+        case WM_MOUSEMOVE: {
+            POINT cursor{};GetCursorPos(&cursor);
+            self->moveDrag(cursor);
             return 0;
+        }
         case WM_LBUTTONUP: {
-            int pressed = self->pressed_;
-            bool dragging = self->dragging_;
-            self->pressed_ = -1;
-            self->dragging_ = false;
-            if (GetCapture()==hwnd) ReleaseCapture();
-            if (dragging) { POINT cursor{};GetCursorPos(&cursor);self->drop(cursor); }
-            else if (pressed>0 && pressed==self->hit(point)) {
-                PostMessageW(self->owner_,WM_RECORD_PANEL,pressed,0);
-                InvalidateRect(hwnd,nullptr,FALSE);
-            }
+            POINT cursor{};GetCursorPos(&cursor);
+            self->finishPress(cursor);
             return 0;
         }
         case WM_CAPTURECHANGED:
+            if (GetAsyncKeyState(VK_LBUTTON) & 0x8000) return 0;
             if (self->dragging_) self->aim(false);
             self->dragging_=false;
             self->pressed_=-1;

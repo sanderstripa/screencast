@@ -86,6 +86,14 @@ jobs:
           if ($process.ExitCode -ne 0) { Get-Content "$folder/recording-ui-error.txt" -ErrorAction SilentlyContinue; throw 'Recording UI integration failed' }
           Get-Content "$folder/recording-ui.txt"
           python tests/verify_recording_ui.py $folder
+      - name: Verify capture exclusion and camera overlay
+        shell: pwsh
+        run: |
+          $folder = Join-Path $PWD 'build/smoke'
+          $process = Start-Process build/Release/Screencast.exe -ArgumentList '--overlay-test', $folder -WindowStyle Hidden -PassThru
+          if (-not $process.WaitForExit(30000)) { $process.Kill(); throw 'Capture exclusion test timed out' }
+          if ($process.ExitCode -ne 0) { Get-Content "$folder/test-error.txt" -ErrorAction SilentlyContinue; throw 'Capture exclusion test failed' }
+          Get-Content "$folder/desktop-overlay.txt"
       - name: Package portable app
         # Rendered snapshots are checked separately; a black image is not a passing UI test.
         run: |
