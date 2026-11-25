@@ -17,7 +17,7 @@ class RecordingPanel {
 public:
     ~RecordingPanel() { close(); }
 
-    bool open(HWND owner, HMONITOR monitor, PanelEdge edge, Palette palette, bool english,
+    bool open(HWND owner, HMONITOR monitor, PanelEdge edge, Palette, bool english,
         Recorder& recorder, LiveSettings& live, bool soundAvailable, bool firstStart) {
         close();
         owner_ = owner;
@@ -26,7 +26,6 @@ public:
         soundAvailable_ = soundAvailable;
         monitor_ = monitor ? monitor : MonitorFromWindow(owner, MONITOR_DEFAULTTONEAREST);
         edge_ = edge;
-        palette_ = palette;
         english_ = english;
         tipVisible_ = false;
         dpi_ = GetDpiForWindow(owner);
@@ -60,8 +59,8 @@ public:
         hidden_ = false;
         holdUntil_ = began_ + 230;
         elapsed_ = -1;
-        font_ = CreateFontW(-px(11), 0, 0, 0, FW_MEDIUM, FALSE, FALSE, FALSE,
-            DEFAULT_CHARSET, 0, 0, CLEARTYPE_QUALITY, 0, L"Montserrat");
+        font_ = CreateFontW(-px(21), 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
+            DEFAULT_CHARSET, 0, 0, CLEARTYPE_QUALITY, 0, L"Segoe UI");
         INITCOMMONCONTROLSEX common{sizeof(common), ICC_WIN95_CLASSES};
         InitCommonControlsEx(&common);
         tooltip_ = CreateWindowExW(WS_EX_TOOLWINDOW | WS_EX_TOPMOST, TOOLTIPS_CLASSW, nullptr,
@@ -105,7 +104,6 @@ private:
     Recorder* recorder_{};
     LiveSettings* live_{};
     HFONT font_{};
-    Palette palette_{};
     PanelEdge edge_{PanelEdge::Right};
     RECT screen_{}, position_{}, start_{}, target_{};
     POINT mouseDown_{};
@@ -116,10 +114,13 @@ private:
     bool english_{}, hidden_{}, dragging_{}, firstStart_{}, soundAvailable_{}, tipVisible_{}, travelling_{}, returning_{};
     std::wstring tooltipText_;
 
+    static constexpr int verticalWidth = 126, verticalHeight = 334;
+    static constexpr int horizontalWidth = 396, horizontalHeight = 81;
+
     int px(int value) const { return MulDiv(value, dpi_, 96); }
     RECT dock(bool hidden) const {
-        int width = px(edge_ == PanelEdge::Top ? 250 : 70);
-        int height = px(edge_ == PanelEdge::Top ? 46 : 206);
+        int width = px(edge_ == PanelEdge::Top ? horizontalWidth : verticalWidth);
+        int height = px(edge_ == PanelEdge::Top ? horizontalHeight : verticalHeight);
         int x = screen_.left + (screen_.right - screen_.left - width) / 2;
         int y = screen_.top + (screen_.bottom - screen_.top - height) / 2;
         if (edge_ == PanelEdge::Left) x = screen_.left + (hidden ? -width : px(6));
@@ -152,7 +153,7 @@ private:
             r.bottom-r.top != position_.bottom-position_.top;
         position_ = r;
         int width = r.right-r.left, height = r.bottom-r.top;
-        HRGN shape = CreateRoundRectRgn(0, 0, width, height, px(19), px(19));
+        HRGN shape = CreateRoundRectRgn(0, 0, width, height, px(54), px(54));
         HRGN clip = CreateRectRgn(screen_.left-r.left, screen_.top-r.top, screen_.right-r.left, screen_.bottom-r.top);
         CombineRgn(shape, shape, clip, RGN_AND);
         DeleteObject(clip);
@@ -227,18 +228,28 @@ private:
         }
     }
 
-    POINT center(int index) const {
-        auto width = position_.right-position_.left, height = position_.bottom-position_.top;
-        // Match the current aspect ratio even while changing orientation.
-        double horizontal = std::clamp((double(width-height)/px(130)+1.)/2., 0., 1.);
-        return {interpolate(width/2, px(index ? 86 + index*35 : 42), horizontal),
-            interpolate(px(index ? 32 + index*36 : 24), height/2, horizontal)};
+    double horizontalProgress() const {
+        return std::clamp(double(position_.right-position_.left-px(verticalWidth)) /
+            (px(horizontalWidth)-px(verticalWidth)), 0., 1.);
     }
+
+    POINT center(int index) const {
+        // Index zero is the timer. The remaining centers follow PanelAction.
+        constexpr std::array<int, 5> horizontalX{78, 167, 233, 293, 355};
+        constexpr std::array<int, 5> verticalY{47, 106, 172, 232, 293};
+        auto progress = horizontalProgress();
+        return {interpolate(px(63), px(horizontalX[index]), progress),
+            interpolate(px(verticalY[index]), px(40), progress)};
+    }
+
+    int actionRadius(int index) const { return px(index == 4 ? 23 : 18); }
 
     int hit(POINT p) const {
         for (int i=1; i<=4; ++i) {
             auto c = center(i);
-            if (std::abs(p.x-c.x) <= px(16) && std::abs(p.y-c.y) <= px(16)) return i;
+            auto dx = p.x-c.x, dy = p.y-c.y;
+            auto radius = actionRadius(i);
+            if (dx*dx+dy*dy <= radius*radius) return i;
         }
         return 0;
     }
@@ -266,52 +277,111 @@ private:
             SendMessageW(tooltip_, TTM_UPDATETIPTEXTW, 0, reinterpret_cast<LPARAM>(&tool));
             auto c = center(hot_);
             SendMessageW(tooltip_, TTM_TRACKPOSITION, 0,
-                MAKELPARAM(position_.left+c.x, position_.top+c.y+px(18)));
+                MAKELPARAM(position_.left+c.x, position_.top+c.y+actionRadius(hot_)));
         }
         SendMessageW(tooltip_, TTM_TRACKACTIVATE, show, reinterpret_cast<LPARAM>(&tool));
         tipVisible_ = show;
     }
 
     void paint(HDC dc, RECT r) const {
-        auto brush = CreateSolidBrush(palette_.background);
-        FillRect(dc, &r, brush);
-        DeleteObject(brush);
-        Gdiplus::Graphics g(dc);
-        g.SetSmoothingMode(Gdiplus::SmoothingModeAntiAlias);
-        auto color = [](COLORREF c){return Gdiplus::Color(255,GetRValue(c),GetGValue(c),GetBValue(c));};
-        for (int i=1;i<=4;++i) {
+        using namespace Gdiplus;
+        const Color ink(255, 237, 237, 237);
+        const Color red(255, 210, 63, 72);
+        auto background = CreateSolidBrush(RGB(15, 15, 15));
+        FillRect(dc, &r, background);
+        DeleteObject(background);
+
+        for (int i=1; i<=4; ++i) {
             auto c = center(i);
-            if (hot_ == i || pressed_ == i) {
-                Gdiplus::SolidBrush hover(color(palette_.hover));
-                g.FillEllipse(&hover,c.x-px(15),c.y-px(15),px(30),px(30));
+            Graphics g(dc);
+            g.SetSmoothingMode(SmoothingModeAntiAlias);
+            g.TranslateTransform(static_cast<REAL>(c.x), static_cast<REAL>(c.y));
+            const auto scale = static_cast<REAL>(dpi_)/96.f;
+            g.ScaleTransform(scale, scale);
+
+            const bool highlighted = hot_ == i || pressed_ == i;
+            if (i != 4 && highlighted) {
+                SolidBrush hover(Color(255, 42, 42, 42));
+                g.FillEllipse(&hover, -18, -18, 36, 36);
             }
-            Gdiplus::Pen pen(color(i==2 && !soundAvailable_ ? palette_.muted : palette_.text),float(px(2)));
-            auto line = [&](int x,int y,int a,int b) {
-                g.DrawLine(&pen,float(c.x+px(x)),float(c.y+px(y)),float(c.x+px(a)),float(c.y+px(b)));
-            };
-            if (i==1 && recorder_->paused()) { line(-4,-6,6,0);line(6,0,-4,6);line(-4,6,-4,-6); }
-            if (i==1 && !recorder_->paused()) { line(-3,-6,-3,6);line(3,-6,3,6); }
-            if (i==2) {
-                line(-7,-3,-3,-3);line(-3,-3,2,-7);line(2,-7,2,7);
-                line(2,7,-3,3);line(-3,3,-7,3);line(-7,3,-7,-3);
-                if (live_->systemMuted || !soundAvailable_) { line(5,-3,9,3);line(9,-3,5,3); }
-                else g.DrawArc(&pen,c.x-px(2),c.y-px(6),px(20),px(12),-55.f,110.f);
+            const auto iconColor = i == 2 && !soundAvailable_ ? Color(255, 139, 139, 139) : ink;
+            SolidBrush fill(iconColor);
+            Pen stroke(iconColor, 2.4f);
+            stroke.SetStartCap(LineCapRound);
+            stroke.SetEndCap(LineCapRound);
+            stroke.SetLineJoin(LineJoinRound);
+
+            switch (static_cast<PanelAction>(i)) {
+            case PanelAction::Pause: {
+                g.DrawEllipse(&stroke, -11.25f, -11.25f, 22.5f, 22.5f);
+                if (recorder_->paused()) {
+                    const PointF play[]{{-2.5f, -4.5f}, {4.5f, 0.f}, {-2.5f, 4.5f}};
+                    g.FillPolygon(&fill, play, 3);
+                } else {
+                    g.DrawLine(&stroke, -2.4f, -3.f, -2.4f, 3.f);
+                    g.DrawLine(&stroke, 2.4f, -3.f, 2.4f, 3.f);
+                }
+                break;
             }
-            if (i==3) { line(-8,-1,0,-8);line(0,-8,8,-1);line(-5,-2,-5,7);line(-5,7,5,7);line(5,7,5,-2); }
-            if (i==4) g.DrawRectangle(&pen,c.x-px(5),c.y-px(5),px(10),px(10));
+            case PanelAction::Sound: {
+                GraphicsPath speaker;
+                speaker.StartFigure();
+                speaker.AddBezier(-10.5f, -3.5f, -10.5f, -6.f, -9.f, -6.f, -6.5f, -6.f);
+                speaker.AddLine(-6.5f, -6.f, -1.5f, -10.5f);
+                speaker.AddBezier(-1.5f, -10.5f, 0.f, -12.f, 2.f, -11.f, 2.f, -9.f);
+                speaker.AddLine(2.f, -9.f, 2.f, 9.f);
+                speaker.AddBezier(2.f, 9.f, 2.f, 11.f, 0.f, 12.f, -1.5f, 10.5f);
+                speaker.AddLine(-1.5f, 10.5f, -6.5f, 6.f);
+                speaker.AddBezier(-6.5f, 6.f, -9.f, 6.f, -10.5f, 6.f, -10.5f, 3.5f);
+                speaker.CloseFigure();
+                g.DrawPath(&stroke, &speaker);
+                if (live_->systemMuted || !soundAvailable_) {
+                    g.DrawLine(&stroke, 6.f, -2.5f, 11.f, 2.5f);
+                    g.DrawLine(&stroke, 11.f, -2.5f, 6.f, 2.5f);
+                } else {
+                    g.DrawBezier(&stroke, 6.5f, -4.f, 8.f, -2.f, 8.f, 2.f, 6.5f, 4.f);
+                    g.DrawBezier(&stroke, 11.f, -6.f, 13.f, -3.f, 13.f, 3.f, 11.f, 6.f);
+                }
+                break;
+            }
+            case PanelAction::Home: {
+                const PointF house[]{{-11.f, 10.5f}, {-11.f, -2.5f}, {0.f, -12.f},
+                    {11.f, -2.5f}, {11.f, 10.5f}};
+                g.DrawPolygon(&stroke, house, 5);
+                const PointF door[]{{-3.5f, 10.5f}, {-3.5f, .5f}, {3.5f, .5f}, {3.5f, 10.5f}};
+                g.DrawLines(&stroke, door, 4);
+                break;
+            }
+            case PanelAction::Stop: {
+                SolidBrush ring(highlighted ? Color(255, 255, 255, 255) : ink);
+                SolidBrush stop(red);
+                g.FillEllipse(&ring, -22.5f, -22.5f, 45.f, 45.f);
+                g.FillEllipse(&stop, -9.f, -9.f, 18.f, 18.f);
+                break;
+            }
+            }
         }
-        auto c = center(0);
-        Gdiplus::SolidBrush dot(recorder_->paused() ? color(palette_.muted) : Gdiplus::Color(255,229,69,86));
-        g.FillEllipse(&dot,c.x-px(29),c.y-px(3),px(6),px(6));
+
+        const auto progress = horizontalProgress();
+        auto timer = center(0);
         wchar_t duration[32]{};
         auto seconds = std::max<int64_t>(0, elapsed_);
         swprintf_s(duration,L"%02lld:%02lld:%02lld",seconds/3600,seconds/60%60,seconds%60);
-        RECT text{c.x-px(17),c.y-px(10),c.x+px(35),c.y+px(10)};
-        auto previous = SelectObject(dc,font_);
-        SetBkMode(dc,TRANSPARENT);
-        SetTextColor(dc,palette_.text);
-        DrawTextW(dc,duration,-1,&text,DT_SINGLELINE|DT_VCENTER|DT_LEFT|DT_NOPREFIX);
-        SelectObject(dc,previous);
+        auto previous = SelectObject(dc, font_);
+        SIZE textSize{};
+        GetTextExtentPoint32W(dc, duration, lstrlenW(duration), &textSize);
+        RECT text{timer.x-textSize.cx/2, timer.y-px(15), timer.x+(textSize.cx+1)/2, timer.y+px(15)};
+        SetBkMode(dc, TRANSPARENT);
+        SetTextColor(dc, RGB(237, 237, 237));
+        DrawTextW(dc, duration, -1, &text, DT_SINGLELINE | DT_VCENTER | DT_CENTER | DT_NOPREFIX);
+        SelectObject(dc, previous);
+
+        Graphics g(dc);
+        g.SetSmoothingMode(SmoothingModeAntiAlias);
+        SolidBrush dot(recorder_->paused() ? Color(255, 139, 139, 139) : Color(255, 229, 75, 88));
+        const auto dotX = interpolate(px(63), text.left-px(12), progress);
+        const auto dotY = interpolate(px(22), px(40), progress);
+        g.FillEllipse(&dot, static_cast<INT>(dotX-px(4)), static_cast<INT>(dotY-px(4)), px(9), px(9));
     }
 
     void moveDrag(POINT cursor) {
